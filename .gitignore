@@ -1,0 +1,25 @@
+# Environment variables (actual keys - never commit)
+extraction/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Output directories
+extraction/extracted/
+extraction/raw_papers/
+extraction/curated_pool.json
+
