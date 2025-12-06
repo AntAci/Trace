@@ -4,6 +4,7 @@ Phase 4: Neo Blockchain Client
 Minimal wrapper around Neo SDK for writing hypothesis receipts on-chain.
 """
 import json
+import hashlib
 from datetime import datetime, timezone
 from typing import Optional
 
