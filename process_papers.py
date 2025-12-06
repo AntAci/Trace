@@ -80,7 +80,9 @@ async def process_papers_from_folder(
     # Step 3: Phase 2 - Analyze synergies
     print("\n[Step 3] Phase 2: Analyzing synergies and conflicts...")
     try:
-        synergy_json = analyze_papers(paper_a_json, paper_b_json)
+        from phase2.synergy_agent import SynergyAgent
+        agent = SynergyAgent()
+        synergy_json = await agent.analyze_async(paper_a_json, paper_b_json)
         print(f"[OK] Found {len(synergy_json.get('overlapping_variables', []))} overlapping variables")
         print(f"[OK] Found {len(synergy_json.get('potential_synergies', []))} potential synergies")
         print(f"[OK] Found {len(synergy_json.get('potential_conflicts', []))} potential conflicts")
@@ -91,7 +93,9 @@ async def process_papers_from_folder(
     # Step 4: Phase 3 - Generate hypothesis
     print("\n[Step 4] Phase 3: Generating hypothesis...")
     try:
-        hypothesis_card = generate_hypothesis(paper_a_json, paper_b_json, synergy_json)
+        from phase3.hypothesis_agent import HypothesisAgent
+        agent = HypothesisAgent()
+        hypothesis_card = await agent.generate_hypothesis_async(paper_a_json, paper_b_json, synergy_json)
         print(f"[OK] Hypothesis generated: {hypothesis_card.get('hypothesis_id')}")
         print(f"   Confidence: {hypothesis_card.get('confidence')}")
         print(f"   Hypothesis: {hypothesis_card.get('hypothesis', '')[:100]}...")
