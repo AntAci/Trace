@@ -16,6 +16,6 @@ PyPDF2>=3.0
 # SpoonOS integration 
 spoon-ai-sdk
 
-# Neo blockchain integration 
-# neo3-python
+# Neo blockchain integration (install for real on-chain attestations)
+# neo-mamba
 
