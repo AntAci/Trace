@@ -210,36 +210,135 @@ class NeoClient:
         author_wallet: str
     ) -> Dict[str, Any]:
         """
-        Write attestation using a dedicated registry smart contract.
+        Write attestation using the Hypothesis Registry smart contract.
 
-        The registry contract should have a function like:
-        register(hypothesis_id: str, content_hash: str, author: str) -> bool
+        The registry contract stores:
+        - hypothesis_id -> content_hash mapping
+        - hypothesis_id -> author mapping
+        - hypothesis_id -> timestamp mapping
+
+        Contract methods:
+        - register(hypothesis_id: bytes, content_hash: str, author: UInt160) -> bool
+        - get_hash(hypothesis_id: bytes) -> str
+        - verify(hypothesis_id: bytes, expected_hash: str) -> bool
         """
         try:
+            # Parse registry contract hash (remove 0x prefix if present)
+            contract_hash = REGISTRY_CONTRACT_HASH
+            if contract_hash.startswith("0x"):
+                contract_hash = contract_hash[2:]
+
             # Create generic contract wrapper for registry
-            registry = GenericContract(UInt160.from_string(REGISTRY_CONTRACT_HASH))
+            registry = GenericContract(UInt160.from_string(contract_hash))
+
+            # Convert hypothesis_id to bytes for the contract
+            hypothesis_id_bytes = hypothesis_id.encode('utf-8')
 
             # Call the register function
+            # register(hypothesis_id: bytes, content_hash: str, author: UInt160) -> bool
             receipt = await self.facade.invoke(
                 registry.call_function(
                     "register",
-                    [hypothesis_id, content_hash, author_wallet]
+                    [hypothesis_id_bytes, content_hash, self.account.script_hash]
                 )
             )
 
+            # Check if registration was successful
+            success = receipt.result if hasattr(receipt, 'result') else True
+
             return {
-                "success": True,
+                "success": bool(success),
                 "tx_id": str(receipt.tx_hash),
                 "included_in_block": receipt.included_in_block,
                 "confirmations": receipt.confirmations,
                 "gas_consumed": str(receipt.gas_consumed),
                 "hypothesis_id": hypothesis_id,
                 "content_hash": content_hash,
-                "attestation_type": "registry_contract"
+                "attestation_type": "registry_contract",
+                "contract_hash": REGISTRY_CONTRACT_HASH
             }
 
         except Exception as e:
             raise RuntimeError(f"Failed to write registry attestation: {e}")
+
+    async def verify_on_chain(self, hypothesis_id: str, expected_hash: str) -> bool:
+        """
+        Verify a hypothesis attestation on-chain using the registry contract.
+
+        Args:
+            hypothesis_id: The hypothesis ID to verify
+            expected_hash: The expected content hash
+
+        Returns:
+            bool: True if the on-chain hash matches the expected hash
+        """
+        if not REGISTRY_CONTRACT_HASH:
+            print("[Neo] No registry contract configured - cannot verify on-chain")
+            return False
+
+        if not self.facade:
+            return False
+
+        try:
+            contract_hash = REGISTRY_CONTRACT_HASH
+            if contract_hash.startswith("0x"):
+                contract_hash = contract_hash[2:]
+
+            registry = GenericContract(UInt160.from_string(contract_hash))
+            hypothesis_id_bytes = hypothesis_id.encode('utf-8')
+
+            # Call verify function (read-only, no gas cost)
+            result = await self.facade.test_invoke(
+                registry.call_function(
+                    "verify",
+                    [hypothesis_id_bytes, expected_hash]
+                )
+            )
+
+            return bool(result.result) if hasattr(result, 'result') else False
+
+        except Exception as e:
+            print(f"[Neo] Verification failed: {e}")
+            return False
+
+    async def get_on_chain_hash(self, hypothesis_id: str) -> Optional[str]:
+        """
+        Get the stored content hash for a hypothesis from the registry contract.
+
+        Args:
+            hypothesis_id: The hypothesis ID to lookup
+
+        Returns:
+            str: The stored content hash, or None if not found
+        """
+        if not REGISTRY_CONTRACT_HASH:
+            return None
+
+        if not self.facade:
+            return None
+
+        try:
+            contract_hash = REGISTRY_CONTRACT_HASH
+            if contract_hash.startswith("0x"):
+                contract_hash = contract_hash[2:]
+
+            registry = GenericContract(UInt160.from_string(contract_hash))
+            hypothesis_id_bytes = hypothesis_id.encode('utf-8')
+
+            result = await self.facade.test_invoke(
+                registry.call_function(
+                    "get_hash",
+                    [hypothesis_id_bytes]
+                )
+            )
+
+            if hasattr(result, 'result') and result.result:
+                return str(result.result)
+            return None
+
+        except Exception as e:
+            print(f"[Neo] Failed to get on-chain hash: {e}")
+            return None
 
     async def get_attestation(self, tx_id: str) -> Optional[Dict[str, Any]]:
         """
