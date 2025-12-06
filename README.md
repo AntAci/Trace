@@ -127,7 +127,49 @@ Trace takes **2 research paper PDFs** and automatically:
 - Computes **SHA-256 content hash** for verification
 - Saves to **off-chain registry** (`data/hypotheses/{id}.json`)
 - Writes **Neo blockchain receipt** (hypothesis_id, hash, author, timestamp)
+- **NeoFS storage** (SpoonOS Tool) - Decentralized storage on NeoFS network
+- **X402 payment** (SpoonOS Tool) - Optional micropayment for premium minting
 - Returns mint result with all metadata
+
+### SpoonOS Tool Integrations
+
+This project uses official **SpoonOS toolkit tools** to satisfy hackathon requirements:
+
+#### NeoFS Storage Tool
+Decentralized storage for hypothesis data using `spoon_ai.tools.neofs_tools`:
+```python
+from phase4.spoon_tools import SpoonToolManager
+
+manager = SpoonToolManager()
+await manager.initialize()
+result = await manager.store_hypothesis(hypothesis_card)
+# Returns: {object_id, container_id, success}
+```
+
+#### X402 Payment Tool
+Micropayment protocol for premium minting using `spoon_ai.tools.x402_payment`:
+```python
+result = await manager.process_payment(
+    hypothesis_id="trace_hyp_001",
+    content_hash="0x...",
+    author_wallet="NWallet..."
+)
+# Returns: {tx_hash, amount_usdc, network, success}
+```
+
+**Configuration** (add to `extraction/.env`):
+```bash
+# NeoFS Configuration
+NEOFS_BASE_URL=grpc://st1.storage.fs.neo.org:8080
+NEOFS_OWNER_ADDRESS=NXxxxxYourNeoAddressHere
+NEOFS_PRIVATE_KEY_WIF=your_wif_private_key
+
+# X402 Configuration (optional)
+X402_PRIVATE_KEY=0x...your_eth_private_key
+X402_RECEIVER_ADDRESS=0x...
+X402_NETWORK=base-sepolia
+X402_MINT_FEE=0.001
+```
 
 ---
 
@@ -144,7 +186,8 @@ Trace/
 │   ├── extract_groq.py      # Groq LLM integration
 │   ├── extract_paper.py    # Core extraction function
 │   ├── spoon_tool.py        # SpoonOS tool wrapper
-│   └── .env                # GROQ_API_KEY (create this)
+│   ├── .env                # API keys (create from .env.example)
+│   └── .env.example        # Environment template
 │
 ├── phase2/                  # Phase 2: Synergy analysis
 │   └── synergy_agent.py    # Graph building + LLM analysis
@@ -154,6 +197,7 @@ Trace/
 │
 ├── phase4/                  # Phase 4: Hypothesis minting
 │   ├── minting_service.py  # Core minting logic
+│   ├── spoon_tools.py      # SpoonOS NeoFS + X402 integrations
 │   ├── registry_store.py   # Off-chain storage
 │   └── neo_client.py       # Neo blockchain client
 │
