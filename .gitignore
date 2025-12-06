@@ -21,5 +21,11 @@ ENV/
 # Output directories
 extraction/extracted/
 extraction/raw_papers/
-extraction/curated_pool.json
+phase2/__pycache__/
+phase3/__pycache__/
+phase4/__pycache__/
+data/
+
+# Input PDFs (keep folder, ignore PDF files)
+input_pdfs/*.pdf
 

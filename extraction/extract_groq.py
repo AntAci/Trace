@@ -3,7 +3,7 @@ import json
 from groq import Groq
 from dotenv import load_dotenv
 
-# Load .env from the same directory as this script
+# Load .env 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(script_dir, ".env")
 load_dotenv(env_path)
@@ -14,32 +14,34 @@ if not api_key:
 
 client = Groq(api_key=api_key)
 
-MODEL = "llama-3.3-70b-versatile"  # Updated from decommissioned llama-3.1-70b-versatile
+MODEL = "llama-3.3-70b-versatile"
 
 
-def extract_structure(abstract, title=""):
+def extract_structure(text, title=""):
     """
-    Extract structured scientific information for Trace Phase 1.
+    Extract structured scientific information from a paper for Trace Phase 1.
+    
+    This function converts a paper (abstract or full text) into structured JSON
+    with claims, methods, evidence, limitations, and variables.
     """
 
     prompt = f"""
-You are extracting structured scientific information for a research evidence graph.
+You are extracting structured scientific information from a research paper.
 
 TITLE:
 {title}
 
-ABSTRACT:
-{abstract}
+PAPER TEXT:
+{text}
 
 Extract the following fields in STRICT JSON format:
 
-- claims: list of the main scientific claims (1–3 items)
-- methods: key methods used (ML models, algorithms, techniques)
-- evidence: concrete evidence supporting the claims (numerical or experimental details if stated)
-- explicit_limitations: limitations directly mentioned
-- implicit_limitations: limitations that follow logically from the abstract
-- datasets: datasets or evaluation setups mentioned
-- contradictions: any internal contradictions or tensions
+- claims: list of the main scientific claims (all claims)
+- methods: the main methods or techniques used
+- evidence: concrete evidence supporting the claims (1–2 items, numerical or experimental details if stated)
+- explicit_limitations: limitations directly mentioned in the paper
+- implicit_limitations: limitations that follow logically from the research
+- variables: important variables or scientific factors mentioned (e.g., temperature, pressure, concentration, model parameters)
 
 Return ONLY valid JSON. Do not add commentary.
     """

@@ -1,0 +1,21 @@
+# Trace: Scientific Paper Hypothesis Generation Pipeline
+# Consolidated requirements for all phases
+
+# Core LLM and API
+groq
+
+# Environment and configuration
+python-dotenv
+
+# HTTP requests
+requests
+
+# PDF processing
+PyPDF2>=3.0
+
+# SpoonOS integration 
+spoon-ai-sdk
+
+# Neo blockchain integration 
+# neo3-python
+

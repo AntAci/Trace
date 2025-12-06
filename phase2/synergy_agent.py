@@ -1,0 +1,370 @@
+"""
+Phase 2: Synergy and Conflict Analysis Agent
+
+This module implements a Spoon Agent that compares two Phase 1 structured JSON outputs
+and identifies synergies, conflicts, and overlapping variables.
+"""
+import json
+import os
+from typing import Dict, List, Any, Optional
+from groq import Groq
+from dotenv import load_dotenv
+
+# Load Groq API key (same as Phase 1)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(script_dir, "..", "extraction", ".env")
+load_dotenv(env_path)
+
+api_key = os.getenv("GROQ_API_KEY")
+if not api_key:
+    raise ValueError("GROQ_API_KEY not found. Set it in extraction/.env")
+
+client = Groq(api_key=api_key)
+MODEL = "llama-3.3-70b-versatile"
+
+
+class SynergyAgent:
+    """
+    Spoon Agent for analyzing synergies and conflicts between two papers.
+    
+    Takes two Phase 1 structured JSON outputs and produces:
+    - Overlapping variables
+    - Potential synergies
+    - Potential conflicts
+    - In-memory graph representation
+    """
+    
+    def __init__(self):
+        """Initialize the agent with Groq client."""
+        self.client = client
+        self.model = MODEL
+    
+    def analyze(self, paper_a_json: Dict[str, Any], paper_b_json: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyze two papers for synergies and conflicts.
+        """
+        # Validate inputs
+        self._validate_phase1_json(paper_a_json, "Paper A")
+        self._validate_phase1_json(paper_b_json, "Paper B")
+        
+        # Build in-memory graph
+        graph = self._build_graph(paper_a_json, paper_b_json)
+        
+        # Use Groq to analyze overlaps, synergies, and conflicts
+        analysis = self._analyze_with_groq(paper_a_json, paper_b_json, graph)
+        
+        # Enhance graph with overlapping variables and synergy/conflict edges
+        enhanced_graph = self._enhance_graph_with_analysis(graph, analysis, paper_a_json, paper_b_json)
+        
+        # Combine graph and analysis
+        result = {
+            "overlapping_variables": analysis.get("overlapping_variables", []),
+            "potential_synergies": analysis.get("potential_synergies", []),
+            "potential_conflicts": analysis.get("potential_conflicts", []),
+            "graph": enhanced_graph
+        }
+        
+        return result
+    
+    def _validate_phase1_json(self, paper_json: Dict[str, Any], paper_name: str):
+        """Validate that input is a valid Phase 1 JSON structure."""
+        required_fields = ["claims", "methods", "evidence", "explicit_limitations", 
+                          "implicit_limitations", "variables"]
+        
+        missing_fields = [f for f in required_fields if f not in paper_json]
+        if missing_fields:
+            raise ValueError(f"{paper_name} missing required fields: {missing_fields}")
+    
+    def _enhance_graph_with_analysis(self, graph: Dict[str, Any], analysis: Dict[str, Any],
+                                    paper_a: Dict[str, Any], paper_b: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Enhance graph with overlapping variables and synergy/conflict edges.
+        
+        Adds:
+        - Nodes for overlapping variables (marked as "both")
+        - Edges for potential synergies
+        - Edges for potential conflicts
+        """
+        nodes = graph.get("nodes", [])
+        edges = graph.get("edges", [])
+        
+        # Add overlapping variable nodes
+        for var in analysis.get("overlapping_variables", []):
+            var_id = f"var_{var.lower().replace(' ', '_')}"
+            # Check if already exists
+            if not any(n["id"] == var_id for n in nodes):
+                nodes.append({
+                    "id": var_id,
+                    "type": "variable",
+                    "paper": "both",
+                    "text": var
+                })
+        
+        # Add edges for synergies
+        for synergy in analysis.get("potential_synergies", []):
+            synergy_id = synergy.get("id", "")
+            paper_a_support = synergy.get("paper_A_support", [])
+            paper_b_support = synergy.get("paper_B_support", [])
+            
+            # Link claims from both papers
+            for a_claim in paper_a_support:
+                for b_claim in paper_b_support:
+                    edges.append({
+                        "source": a_claim,
+                        "target": b_claim,
+                        "relation": "potential_synergy",
+                        "synergy_id": synergy_id
+                    })
+        
+        # Add edges for conflicts
+        for conflict in analysis.get("potential_conflicts", []):
+            conflict_id = conflict.get("id", "")
+            paper_a_support = conflict.get("paper_A_support", [])
+            paper_b_support = conflict.get("paper_B_support", [])
+            
+            # Link conflicting claims
+            for a_claim in paper_a_support:
+                for b_claim in paper_b_support:
+                    edges.append({
+                        "source": a_claim,
+                        "target": b_claim,
+                        "relation": "potential_conflict",
+                        "conflict_id": conflict_id
+                    })
+        
+        return {"nodes": nodes, "edges": edges}
+    
+    def _build_graph(self, paper_a: Dict[str, Any], paper_b: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Build in-memory graph representation of both papers.
+        Creates nodes for claims, variables, and methods, and edges linking them.
+        """
+        nodes = []
+        edges = []
+        
+        # Add Paper A nodes
+        for i, claim in enumerate(paper_a.get("claims", [])):
+            node_id = f"A_claim_{i+1}"
+            nodes.append({
+                "id": node_id,
+                "type": "claim",
+                "paper": "A",
+                "text": claim
+            })
+        
+        for i, var in enumerate(paper_a.get("variables", [])):
+            node_id = f"A_var_{i+1}"
+            nodes.append({
+                "id": node_id,
+                "type": "variable",
+                "paper": "A",
+                "text": str(var)
+            })
+        
+        # Add Paper B nodes
+        for i, claim in enumerate(paper_b.get("claims", [])):
+            node_id = f"B_claim_{i+1}"
+            nodes.append({
+                "id": node_id,
+                "type": "claim",
+                "paper": "B",
+                "text": claim
+            })
+        
+        for i, var in enumerate(paper_b.get("variables", [])):
+            node_id = f"B_var_{i+1}"
+            nodes.append({
+                "id": node_id,
+                "type": "variable",
+                "paper": "B",
+                "text": str(var)
+            })
+        
+        # Add edges: claims use variables (within each paper)
+        for i, claim in enumerate(paper_a.get("claims", [])):
+            claim_id = f"A_claim_{i+1}"
+            for j, var in enumerate(paper_a.get("variables", [])):
+                var_id = f"A_var_{j+1}"
+                edges.append({
+                    "source": claim_id,
+                    "target": var_id,
+                    "relation": "uses_variable"
+                })
+        
+        for i, claim in enumerate(paper_b.get("claims", [])):
+            claim_id = f"B_claim_{i+1}"
+            for j, var in enumerate(paper_b.get("variables", [])):
+                var_id = f"B_var_{j+1}"
+                edges.append({
+                    "source": claim_id,
+                    "target": var_id,
+                    "relation": "uses_variable"
+                })
+        
+        return {"nodes": nodes, "edges": edges}
+    
+    def _analyze_with_groq(self, paper_a: Dict[str, Any], paper_b: Dict[str, Any], 
+                          graph: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Use Groq LLM to analyze overlaps, synergies, and conflicts.
+        
+        Returns structured JSON with:
+        - overlapping_variables
+        - potential_synergies
+        - potential_conflicts
+        """
+        prompt = self._build_analysis_prompt(paper_a, paper_b, graph)
+        
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": self._get_system_prompt()
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.2,  
+        )
+        
+        content = response.choices[0].message.content
+        
+        # Strip markdown code blocks if present
+        content = content.strip()
+        if content.startswith("```"):
+            lines = content.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            content = "\n".join(lines)
+        
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
+            print(f"Response content: {content[:500]}...")
+            return self._fix_json(content)
+    
+    def _get_system_prompt(self) -> str:
+        """Get the system prompt for the synergy analysis agent."""
+        return """You are a scientific analysis agent that compares two structured paper representations.
+
+CRITICAL RULES:
+1. You receive ALREADY STRUCTURED JSON from Phase 1 - NOT raw paper text
+2. You MUST NOT hallucinate new claims or variables not present in the input JSON
+3. You MUST NOT provide generic summarization - only specific cross-paper analysis
+4. You MUST return STRICT JSON format only - no free-form paragraphs
+5. Only identify synergies/conflicts that are scientifically plausible based on the provided claims, evidence, and variables
+
+Your output must be valid JSON with these exact fields:
+- overlapping_variables: list of variable names that appear in both papers
+- potential_synergies: list of objects with id, description, paper_A_support, paper_B_support
+- potential_conflicts: list of objects with id, description, paper_A_support, paper_B_support
+
+Return ONLY the JSON object, no commentary."""
+    
+    def _build_analysis_prompt(self, paper_a: Dict[str, Any], paper_b: Dict[str, Any], 
+                              graph: Dict[str, Any]) -> str:
+        """Build the analysis prompt for Groq."""
+        return f"""Analyze the following two structured paper representations for synergies and conflicts.
+
+PAPER A:
+{json.dumps(paper_a, indent=2)}
+
+PAPER B:
+{json.dumps(paper_b, indent=2)}
+
+GRAPH STRUCTURE:
+{json.dumps(graph, indent=2)}
+
+Your task:
+1. Identify overlapping variables (variables that appear in both papers, possibly with different names but same meaning)
+2. Identify potential synergies (where one paper's result could extend, refine, or support the other)
+3. Identify potential conflicts (where assumptions, methods, or conclusions clash)
+
+For synergies and conflicts, reference specific claims by their IDs from the graph (e.g., "A_claim_1", "B_claim_2").
+
+Return a JSON object with:
+{{
+  "overlapping_variables": ["variable1", "variable2", ...],
+  "potential_synergies": [
+    {{
+      "id": "syn_1",
+      "description": "Specific description of how papers complement each other",
+      "paper_A_support": ["A_claim_1", "A_evidence_1"],
+      "paper_B_support": ["B_claim_2"]
+    }}
+  ],
+  "potential_conflicts": [
+    {{
+      "id": "conf_1",
+      "description": "Specific description of the conflict or tension",
+      "paper_A_support": ["A_claim_3"],
+      "paper_B_support": ["B_claim_1"]
+    }}
+  ]
+}}
+
+Return ONLY valid JSON. Do not add commentary."""
+    
+    def _fix_json(self, bad_text: str) -> Dict[str, Any]:
+        """Repair malformed JSON using Groq."""
+        fix_prompt = f"""The following text should be valid JSON but is not. Fix it.
+
+TEXT:
+{bad_text}
+
+Return only corrected JSON with the structure:
+{{
+  "overlapping_variables": [],
+  "potential_synergies": [],
+  "potential_conflicts": []
+}}"""
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "Fix JSON formatting only."},
+                {"role": "user", "content": fix_prompt}
+            ],
+            temperature=0.0,
+        )
+
+        return json.loads(response.choices[0].message.content)
+
+
+def analyze_papers(paper_a_json: Dict[str, Any], paper_b_json: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convenience function to analyze two papers.
+    """
+    agent = SynergyAgent()
+    return agent.analyze(paper_a_json, paper_b_json)
+
+
+if __name__ == "__main__":
+    # Example usage
+    paper_a = {
+        "claims": ["High temperature accelerates battery degradation"],
+        "methods": ["Accelerated aging tests"],
+        "evidence": ["50% capacity loss at 60°C after 100 cycles"],
+        "explicit_limitations": ["Limited to NMC chemistry"],
+        "implicit_limitations": [],
+        "variables": ["temperature", "capacity", "cycles"]
+    }
+    
+    paper_b = {
+        "claims": ["State of health can be predicted using temperature and voltage"],
+        "methods": ["Machine learning regression"],
+        "evidence": ["95% accuracy on test set"],
+        "explicit_limitations": ["Requires large training dataset"],
+        "implicit_limitations": [],
+        "variables": ["temperature", "voltage", "state_of_health"]
+    }
+    
+    result = analyze_papers(paper_a, paper_b)
+    print(json.dumps(result, indent=2))
+

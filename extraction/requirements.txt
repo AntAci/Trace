@@ -1,4 +1,0 @@
-groq
-python-dotenv
-requests
-
