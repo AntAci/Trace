@@ -13,9 +13,14 @@ requests
 # PDF processing
 PyPDF2>=3.0
 
-# SpoonOS integration 
+# SpoonOS integration (includes NeoFS and X402 tools)
 spoon-ai-sdk
 
 # Neo blockchain integration (install for real on-chain attestations)
 # neo-mamba
+
+# Additional dependencies for SpoonOS tools
+# These may be included in spoon-ai-sdk, but listed for clarity:
+# - NeoFS storage tools require neofs-sdk
+# - X402 payment tools require web3 and eth-account
 
