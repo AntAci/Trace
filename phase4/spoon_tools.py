@@ -350,12 +350,30 @@ class X402MintingPayment:
         # Initialize tools if available
         self.payment_header_tool = None
         self.paywalled_request_tool = None
+        self.x402_service = None
 
-        if X402_AVAILABLE:
+        if X402_AVAILABLE and self.is_configured():
             try:
-                self.payment_header_tool = X402PaymentHeaderTool()
-                self.paywalled_request_tool = X402PaywalledRequestTool()
+                # Import X402 service components
+                from spoon_ai.payments.x402_service import X402PaymentService, X402Settings
+
+                # Create X402 settings with our configuration
+                settings = X402Settings(
+                    default_network=self.network,
+                    pay_to=self.receiver_address,
+                    description="Trace Hypothesis Minting Payment",
+                    max_amount_usdc=1.0  # Max $1 per payment
+                )
+
+                # Create service
+                self.x402_service = X402PaymentService(settings=settings)
+
+                # Initialize tools with the service
+                self.payment_header_tool = X402PaymentHeaderTool(service=self.x402_service)
+                self.paywalled_request_tool = X402PaywalledRequestTool(service=self.x402_service)
                 print("[X402] Payment tools initialized successfully")
+                print(f"  Network: {self.network}")
+                print(f"  Receiver: {self.receiver_address}")
             except Exception as e:
                 print(f"[Warning] Failed to initialize X402 tools: {e}")
 

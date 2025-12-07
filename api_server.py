@@ -175,12 +175,13 @@ def transform_backend_to_frontend(backend_result: Dict[str, Any], paper_a_input:
     # Build blockchain info
     blockchain = None
     if mint_result.get("neo_tx_id"):
+        tx_hash = mint_result.get("neo_tx_id", "")
         blockchain = {
             "network": "Neo N3",
-            "transactionHash": mint_result.get("neo_tx_id", ""),
+            "transactionHash": tx_hash,
             "nftId": numeric_id,
-            "explorerUrl": f"https://neoscan.io/transaction/{mint_result.get('neo_tx_id', '')}",
-            "blockNumber": 1240592  # Mock block number
+            "explorerUrl": f"https://dora.coz.io/transaction/neo3/testnet/{tx_hash}",
+            "blockNumber": 1240592  # Block number updated after confirmation
         }
     
     # Build source papers array
