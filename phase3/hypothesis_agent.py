@@ -94,10 +94,27 @@ class HypothesisAgent:
     """
     
     def __init__(self):
-        """Initialize the agent with SpoonOS Agent (or fallback to Groq)."""
+        """Initialize the agent with SpoonOS Agent (REQUIRED)."""
+        # STRICT REQUIREMENT: SpoonOS must be available
+        if not SPOON_AVAILABLE:
+            raise RuntimeError(
+                "SpoonOS is REQUIRED for this project.\n"
+                "Install with: pip install spoon-ai-sdk\n"
+                "Ensure GROQ_API_KEY is set in extraction/.env"
+            )
+        
+        if spoon_agent is None:
+            raise RuntimeError(
+                "SpoonOS Agent is not initialized.\n"
+                "Check that GROQ_API_KEY is set in extraction/.env\n"
+                "SpoonOS Agent initialization may have failed during import.\n"
+                "Check the console output for initialization errors."
+            )
+        
         self.spoon_agent = spoon_agent
-        self.spoon_available = SPOON_AVAILABLE and spoon_agent is not None
-        # Always initialize Groq client as fallback
+        self.spoon_available = True  # Always True if we get here
+        
+        # Keep Groq client for JSON fix operations (not for primary LLM calls)
         from groq import Groq
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
@@ -109,6 +126,8 @@ class HypothesisAgent:
                                        synergy_json: Dict[str, Any]) -> Dict[str, Any]:
         """
         Async version: Generate a testable hypothesis from paper synergies using SpoonOS.
+        
+        Implements retry logic: up to 2 retries if validation finds invalid claims (hallucinations).
         """
         # Validate inputs
         self._validate_phase1_json(paper_a_json, "Paper A")
@@ -118,78 +137,95 @@ class HypothesisAgent:
         # Select primary synergy (first one, or most relevant)
         primary_synergy = self._select_primary_synergy(synergy_json)
         
-        # Generate hypothesis using SpoonOS
-        hypothesis_card = await self._generate_with_spoonos_async(paper_a_json, paper_b_json, synergy_json, primary_synergy)
+        max_retries = 2
+        retry_count = 0
+        last_validation_errors = []
         
-        # Add hypothesis ID
-        hypothesis_card["hypothesis_id"] = f"trace_hyp_{uuid.uuid4().hex[:8]}"
-        
-        # Validate output structure
-        self._validate_hypothesis_card(hypothesis_card)
-        
-        # Post-validation: Check semantic grounding 
-        validation_result = self._validate_semantic_grounding(
-            hypothesis_card, paper_a_json, paper_b_json, synergy_json
-        )
-        
-        if not validation_result["valid"]:
-            # If invalid, try to fix or mark as low confidence
+        # Generate hypothesis with retry loop
+        while retry_count <= max_retries:
+            # Generate hypothesis using SpoonOS
+            if retry_count == 0:
+                # First attempt: use standard prompt
+                hypothesis_card = await self._generate_with_spoonos_async(
+                    paper_a_json, paper_b_json, synergy_json, primary_synergy
+                )
+            else:
+                # Retry: use enhanced prompt with validation feedback
+                print(f"[Retry {retry_count}/{max_retries}] Regenerating hypothesis with validation feedback...")
+                hypothesis_card = await self._generate_with_spoonos_retry_async(
+                    paper_a_json, paper_b_json, synergy_json, primary_synergy,
+                    last_validation_errors, synergy_json
+                )
+                # Generate new hypothesis ID for retry
+                hypothesis_card["hypothesis_id"] = f"trace_hyp_{uuid.uuid4().hex[:8]}"
+            
+            # Add hypothesis ID (only on first attempt)
+            if retry_count == 0:
+                hypothesis_card["hypothesis_id"] = f"trace_hyp_{uuid.uuid4().hex[:8]}"
+            
+            # Validate output structure
+            self._validate_hypothesis_card(hypothesis_card)
+            
+            # Post-validation: Check semantic grounding 
+            validation_result = self._validate_semantic_grounding(
+                hypothesis_card, paper_a_json, paper_b_json, synergy_json
+            )
+            
+            if validation_result["valid"]:
+                # Success! Return the valid hypothesis
+                if retry_count > 0:
+                    print(f"[Success] Hypothesis validated after {retry_count} retry(ies)")
+                return hypothesis_card
+            
+            # Validation failed - store errors for retry prompt
+            last_validation_errors = validation_result.get("errors", [])
+            
+            # Check if we should retry
+            if retry_count < max_retries:
+                print(f"[Warning] Hypothesis failed validation (attempt {retry_count + 1}/{max_retries + 1}):")
+                for error in last_validation_errors:
+                    print(f"  - {error}")
+                retry_count += 1
+                continue
+            
+            # Max retries reached - fix and mark as low confidence
+            print(f"[Warning] Hypothesis failed validation after {max_retries} retries. Fixing invalid references...")
             if validation_result.get("fixable", False):
                 hypothesis_card = self._fix_hypothesis_card(
                     hypothesis_card, validation_result, paper_a_json, paper_b_json, synergy_json
                 )
             else:
-                # Mark as invalid and retry once
-                print(f"[Warning] Hypothesis failed semantic validation: {validation_result.get('errors', [])}")
                 hypothesis_card["confidence"] = "low"
                 hypothesis_card["risk_notes"].append(
-                    f"Validation warning: {', '.join(validation_result.get('errors', []))}"
+                    f"Validation warning after {max_retries} retries: {', '.join(last_validation_errors)}"
                 )
+            break
         
         return hypothesis_card
     
     def generate_hypothesis(self, paper_a_json: Dict[str, Any], paper_b_json: Dict[str, Any],
                            synergy_json: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Generate a testable hypothesis from paper synergies.
+        Generate a testable hypothesis from paper synergies (sync version).
+        
+        Note: This method uses async internally. For better performance, use generate_hypothesis_async.
         """
-        # Validate inputs
-        self._validate_phase1_json(paper_a_json, "Paper A")
-        self._validate_phase1_json(paper_b_json, "Paper B")
-        self._validate_phase2_json(synergy_json)
-        
-        # Select primary synergy (first one, or most relevant)
-        primary_synergy = self._select_primary_synergy(synergy_json)
-        
-        # Generate hypothesis using Groq
-        hypothesis_card = self._generate_with_groq(paper_a_json, paper_b_json, synergy_json, primary_synergy)
-        
-        # Add hypothesis ID
-        hypothesis_card["hypothesis_id"] = f"trace_hyp_{uuid.uuid4().hex[:8]}"
-        
-        # Validate output structure
-        self._validate_hypothesis_card(hypothesis_card)
-        
-        # Post-validation: Check semantic grounding 
-        validation_result = self._validate_semantic_grounding(
-            hypothesis_card, paper_a_json, paper_b_json, synergy_json
-        )
-        
-        if not validation_result["valid"]:
-            # If invalid, try to fix or mark as low confidence
-            if validation_result.get("fixable", False):
-                hypothesis_card = self._fix_hypothesis_card(
-                    hypothesis_card, validation_result, paper_a_json, paper_b_json, synergy_json
-                )
-            else:
-                # Mark as invalid and retry once
-                print(f"[Warning] Hypothesis failed semantic validation: {validation_result.get('errors', [])}")
-                hypothesis_card["confidence"] = "low"
-                hypothesis_card["risk_notes"].append(
-                    f"Validation warning: {', '.join(validation_result.get('errors', []))}"
-                )
-        
-        return hypothesis_card
+        # Use async version via asyncio.run
+        import asyncio
+        try:
+            # Check if we're already in an async context
+            asyncio.get_running_loop()
+            # If we're in an async context, we can't use asyncio.run
+            raise RuntimeError(
+                "Cannot use sync generate_hypothesis in async context. "
+                "Use generate_hypothesis_async instead."
+            )
+        except RuntimeError as e:
+            # Check if this is our custom error or the "no running loop" error
+            if "async context" in str(e):
+                raise  # Re-raise our custom error
+            # No event loop running, safe to use asyncio.run
+            return asyncio.run(self.generate_hypothesis_async(paper_a_json, paper_b_json, synergy_json))
     
     def _validate_phase1_json(self, paper_json: Dict[str, Any], paper_name: str):
         """Validate that input is a valid Phase 1 JSON structure."""
@@ -292,40 +328,228 @@ class HypothesisAgent:
                                           synergy: Dict[str, Any], primary_synergy: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Async method to use SpoonOS Agent properly.
+        
+        REQUIRES: SpoonOS must be installed and properly configured.
+        Raises RuntimeError if SpoonOS is unavailable.
         """
+        # STRICT REQUIREMENT: SpoonOS must be available
+        if not self.spoon_available:
+            raise RuntimeError(
+                "SpoonOS is REQUIRED for this project.\n"
+                "Install with: pip install spoon-ai-sdk\n"
+                "Ensure GROQ_API_KEY is set in extraction/.env"
+            )
+        
+        if not self.spoon_agent:
+            raise RuntimeError(
+                "SpoonOS Agent is not initialized.\n"
+                "Check that GROQ_API_KEY is set in extraction/.env\n"
+                "SpoonOS Agent initialization may have failed during import."
+            )
+        
         prompt = self._build_hypothesis_prompt(paper_a, paper_b, synergy, primary_synergy)
         system_prompt = self._get_system_prompt()
         full_prompt = f"{system_prompt}\n\n{prompt}"
         
-        if self.spoon_available:
+        try:
+            print("[SpoonOS] Using SpoonOS Agent for hypothesis generation (Agent -> SpoonOS -> LLM)")
+            response = await self.spoon_agent.run(full_prompt)
+            
+            # Extract content from response (try multiple formats)
+            content = None
+            if hasattr(response, 'content'):
+                content = response.content
+            elif hasattr(response, 'text'):
+                content = response.text
+            elif hasattr(response, 'message'):
+                content = response.message
+            elif isinstance(response, dict):
+                # Response is a dict, try common fields
+                content = response.get('content') or response.get('text') or response.get('message') or str(response)
+            else:
+                content = str(response)
+            
+            print(f"[SpoonOS] Successfully got response from SpoonOS Agent (type: {type(response)})")
+            
+            # If content is still a dict, try to find JSON string in it
+            if isinstance(content, dict):
+                # Look for JSON in string fields
+                for key, value in content.items():
+                    if isinstance(value, str) and ('{' in value or '[' in value):
+                        content = value
+                        break
+                # If still dict, convert to JSON string
+                if isinstance(content, dict):
+                    content = json.dumps(content)
+            
+            # Strip markdown code blocks if present
+            content = str(content).strip()
+            if content.startswith("```"):
+                lines = content.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                content = "\n".join(lines)
+            
+            # Try to extract JSON from text if it contains JSON
+            import re
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', content, re.DOTALL)
+            if json_match:
+                content = json_match.group(0)
+            
             try:
-                print("[SpoonOS] Using SpoonOS Agent for hypothesis generation (Agent -> SpoonOS -> LLM)")
-                response = await self.spoon_agent.run(full_prompt)
-                content = response.content if hasattr(response, 'content') else str(response)
-                print("[SpoonOS] Successfully got response from SpoonOS Agent")
-                
-                # Strip markdown code blocks if present
-                content = content.strip()
-                if content.startswith("```"):
-                    lines = content.split("\n")
-                    if lines[0].startswith("```"):
-                        lines = lines[1:]
-                    if lines and lines[-1].strip() == "```":
-                        lines = lines[:-1]
-                    content = "\n".join(lines)
-                
-                try:
-                    return json.loads(content)
-                except json.JSONDecodeError as e:
-                    print(f"JSON decode error: {e}")
-                    print(f"Response content: {content[:500]}...")
-                    return await self._fix_json_async(content)
-            except Exception as e:
-                print(f"[Warning] SpoonOS Agent failed: {e}. Falling back to direct Groq.")
-                return self._generate_with_direct_groq(paper_a, paper_b, synergy, primary_synergy, prompt, system_prompt)
-        else:
-            print("[Direct Groq] SpoonOS not available, using direct Groq calls")
-            return self._generate_with_direct_groq(paper_a, paper_b, synergy, primary_synergy, prompt, system_prompt)
+                return json.loads(content)
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                print(f"Response content (first 500 chars): {content[:500]}...")
+                print(f"Response type: {type(response)}")
+                # Try direct Groq fallback for JSON fixing instead of agent
+                return await self._fix_json_with_groq_async(content)
+        except Exception as e:
+            raise RuntimeError(
+                f"SpoonOS Agent call failed.\n"
+                f"Error: {e}\n"
+                f"Please check your GROQ_API_KEY and network connection."
+            ) from e
+    
+    async def _generate_with_spoonos_retry_async(self, paper_a: Dict[str, Any], paper_b: Dict[str, Any],
+                                                 synergy: Dict[str, Any], primary_synergy: Optional[Dict[str, Any]],
+                                                 validation_errors: list, synergy_json: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Retry generation with enhanced prompt that includes validation feedback.
+        
+        This method is called when the initial hypothesis had invalid claim references.
+        It provides explicit valid claim IDs and validation errors to guide the LLM.
+        """
+        if not self.spoon_available or not self.spoon_agent:
+            raise RuntimeError(
+                "SpoonOS is REQUIRED for this project.\n"
+                "Install with: pip install spoon-ai-sdk\n"
+                "Ensure GROQ_API_KEY is set in extraction/.env"
+            )
+        
+        # Get valid claim IDs from graph
+        graph = synergy_json.get("graph", {})
+        nodes = graph.get("nodes", [])
+        valid_claim_ids = sorted([n["id"] for n in nodes if n.get("type") == "claim"])
+        
+        # Get valid variables
+        valid_variables = set()
+        for var in paper_a.get("variables", []):
+            valid_variables.add(str(var))
+        for var in paper_b.get("variables", []):
+            valid_variables.add(str(var))
+        valid_variables_list = sorted(list(valid_variables))
+        
+        # Get valid synergy IDs
+        synergy_ids = sorted([s.get("id") for s in synergy_json.get("potential_synergies", [])])
+        
+        # Build enhanced retry prompt
+        primary_synergy_text = ""
+        if primary_synergy:
+            primary_synergy_text = f"""
+PRIMARY SYNERGY TO FOCUS ON:
+{json.dumps(primary_synergy, indent=2)}
+"""
+        
+        validation_feedback = "\n".join([f"  - {error}" for error in validation_errors])
+        
+        retry_prompt = f"""⚠️ RETRY REQUEST: Previous hypothesis had invalid claim references.
+
+VALIDATION ERRORS FROM PREVIOUS ATTEMPT:
+{validation_feedback}
+
+CRITICAL: You MUST use ONLY the following valid IDs:
+
+VALID CLAIM IDs (from graph nodes):
+{json.dumps(valid_claim_ids, indent=2)}
+
+VALID VARIABLES (from input papers):
+{json.dumps(valid_variables_list, indent=2)}
+
+VALID SYNERGY IDs (from potential_synergies):
+{json.dumps(synergy_ids, indent=2)}
+
+Generate a testable scientific hypothesis based on the following structured paper data.
+
+PAPER A (Phase 1):
+{json.dumps(paper_a, indent=2)}
+
+PAPER B (Phase 1):
+{json.dumps(paper_b, indent=2)}
+
+SYNERGY ANALYSIS (Phase 2):
+{json.dumps(synergy, indent=2)}
+{primary_synergy_text}
+
+Your task:
+1. Select ONE primary synergy from the potential_synergies list (use its "id" as primary_synergy_id)
+   - MUST be one of: {synergy_ids}
+2. Generate a NEW, testable hypothesis that combines elements from BOTH papers
+3. The hypothesis must be falsifiable and specific enough to be tested experimentally
+4. Reference specific claim IDs from the graph
+   - Paper A claims MUST be from: {[cid for cid in valid_claim_ids if cid.startswith('A_')]}
+   - Paper B claims MUST be from: {[cid for cid in valid_claim_ids if cid.startswith('B_')]}
+   - DO NOT invent claim IDs that don't exist in the list above
+5. Use only variables from the valid variables list: {valid_variables_list}
+   - DO NOT use variables that aren't in this list
+
+Return a JSON object with this EXACT structure:
+{{
+  "primary_synergy_id": "syn_1",  // MUST be from: {synergy_ids}
+  "hypothesis": "If X condition from Paper A is applied to Y system from Paper B, then Z measurable effect will occur.",
+  "rationale": "Short, clear explanation that explicitly references supporting claims and variables from both papers. Must mention specific claim IDs like 'A_claim_1' and 'B_claim_2'.",
+  "source_support": {{
+    "paper_A_claim_ids": ["A_claim_1", "A_claim_2"],  // MUST be from valid Paper A claims
+    "paper_B_claim_ids": ["B_claim_1"],  // MUST be from valid Paper B claims
+    "variables_used": ["temperature", "state_of_health"]  // MUST be from valid variables list
+  }},
+  "proposed_experiment": {{
+    "description": "High-level but concrete experimental setup that could test this hypothesis.",
+    "measurements": ["what to measure", "another measurement"],
+    "expected_direction": "increase / decrease / non-linear effect / etc."
+  }},
+  "confidence": "low / medium / high",
+  "risk_notes": [
+    "Key assumption that might fail",
+    "Another potential weakness"
+  ]
+}}
+
+Return ONLY the JSON object. Do not add commentary."""
+        
+        system_prompt = self._get_system_prompt()
+        full_prompt = f"{system_prompt}\n\n{retry_prompt}"
+        
+        try:
+            print("[SpoonOS Retry] Regenerating with validation feedback...")
+            response = await self.spoon_agent.run(full_prompt)
+            content = response.content if hasattr(response, 'content') else str(response)
+            print("[SpoonOS Retry] Successfully got response from SpoonOS Agent")
+            
+            # Strip markdown code blocks if present
+            content = content.strip()
+            if content.startswith("```"):
+                lines = content.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                content = "\n".join(lines)
+            
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                print(f"Response content: {content[:500]}...")
+                return await self._fix_json_async(content)
+        except Exception as e:
+            raise RuntimeError(
+                f"SpoonOS Agent failed during retry.\n"
+                f"Original error: {e}\n"
+                f"Please check your GROQ_API_KEY and network connection."
+            ) from e
     
     def _generate_with_groq(self, paper_a: Dict[str, Any], paper_b: Dict[str, Any],
                            synergy: Dict[str, Any], primary_synergy: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -641,8 +865,77 @@ Return ONLY the JSON object. Do not add commentary."""
         
         return hypothesis_card
     
+    async def _fix_json_with_groq_async(self, bad_text: str) -> Dict[str, Any]:
+        """
+        Fix malformed JSON using direct Groq (more reliable than agent for JSON fixing).
+        """
+        fix_prompt = f"""The following text should be valid JSON but is not. Fix it and return ONLY valid JSON.
+
+TEXT:
+{bad_text}
+
+Return only corrected JSON with the Hypothesis Card structure:
+{{
+  "primary_synergy_id": "syn_1",
+  "hypothesis": "...",
+  "rationale": "...",
+  "source_support": {{"paper_A_claim_ids": [], "paper_B_claim_ids": [], "variables_used": []}},
+  "proposed_experiment": {{"description": "...", "measurements": [], "expected_direction": "..."}},
+  "confidence": "medium",
+  "risk_notes": []
+}}
+
+Return ONLY the JSON object, no commentary."""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "Fix JSON formatting only. Return ONLY valid JSON."},
+                    {"role": "user", "content": fix_prompt}
+                ],
+                temperature=0.0,
+            )
+            
+            content = response.choices[0].message.content.strip()
+            
+            # Strip markdown code blocks
+            if content.startswith("```"):
+                lines = content.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                content = "\n".join(lines)
+            
+            # Extract JSON if embedded in text
+            import re
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', content, re.DOTALL)
+            if json_match:
+                content = json_match.group(0)
+            
+            return json.loads(content)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to fix JSON with Groq.\n"
+                f"Error: {e}\n"
+                f"Please check your GROQ_API_KEY and network connection."
+            ) from e
+    
     async def _fix_json_async(self, bad_text: str) -> Dict[str, Any]:
-        """Async version: Repair malformed JSON using SpoonOS Agent (or Groq fallback)."""
+        """
+        Fix malformed JSON using SpoonOS Agent (fallback to Groq if agent fails).
+        """
+        # Try direct Groq first (more reliable for JSON)
+        try:
+            return await self._fix_json_with_groq_async(bad_text)
+        except Exception as groq_error:
+            # Fallback to agent if Groq fails
+            if not self.spoon_available or not self.spoon_agent:
+                raise RuntimeError(
+                "SpoonOS is required for JSON fixing.\n"
+                "This error occurred while trying to fix malformed JSON from SpoonOS response."
+            )
         fix_prompt = f"""The following text should be valid JSON but is not. Fix it.
 
 TEXT:
@@ -659,30 +952,28 @@ Return only corrected JSON with the Hypothesis Card structure:
   "risk_notes": []
 }}"""
 
-        # Use SpoonOS Agent if available
-        if self.spoon_available:
-            try:
-                full_prompt = f"Fix JSON formatting only.\n\n{fix_prompt}"
-                response = await self.spoon_agent.run(full_prompt)
-                content = response.content if hasattr(response, 'content') else str(response)
-                return json.loads(content)
-            except Exception as e:
-                print(f"[Warning] SpoonOS Agent failed in fix_json: {e}. Using direct Groq.")
-        
-        # Fallback to direct Groq
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "Fix JSON formatting only."},
-                {"role": "user", "content": fix_prompt}
-            ],
-            temperature=0.0,
-        )
-
-        return json.loads(response.choices[0].message.content)
+        try:
+            full_prompt = f"Fix JSON formatting only.\n\n{fix_prompt}"
+            response = await self.spoon_agent.run(full_prompt)
+            content = response.content if hasattr(response, 'content') else str(response)
+            return json.loads(content)
+        except Exception as e:
+            raise RuntimeError(
+                f"SpoonOS Agent failed while fixing JSON.\n"
+                f"Original error: {e}\n"
+                f"Please check your GROQ_API_KEY and network connection."
+            ) from e
     
     def _fix_json(self, bad_text: str) -> Dict[str, Any]:
-        """Repair malformed JSON using SpoonOS Agent (or Groq fallback)."""
+        """
+        Fix malformed JSON using SpoonOS Agent (sync version).
+        REQUIRES: SpoonOS must be available.
+        """
+        if not self.spoon_available or not self.spoon_agent:
+            raise RuntimeError(
+                "SpoonOS is required for JSON fixing.\n"
+                "This error occurred while trying to fix malformed JSON from SpoonOS response."
+            )
         fix_prompt = f"""The following text should be valid JSON but is not. Fix it.
 
 TEXT:
@@ -699,34 +990,28 @@ Return only corrected JSON with the Hypothesis Card structure:
   "risk_notes": []
 }}"""
 
-        # Use SpoonOS Agent if available
-        if self.spoon_available:
+        try:
+            full_prompt = f"Fix JSON formatting only.\n\n{fix_prompt}"
+            # Check if we're in an async context
             try:
-                full_prompt = f"Fix JSON formatting only.\n\n{fix_prompt}"
-                # Check if we're in an async context
-                try:
-                    loop = asyncio.get_running_loop()
-                    # We're in an async context, use direct Groq
-                    pass  # Fall through to direct Groq
-                except RuntimeError:
-                    # No event loop, we can use asyncio.run
-                    response = asyncio.run(self.spoon_agent.run(full_prompt))
-                    content = response.content if hasattr(response, 'content') else str(response)
-                    return json.loads(content)
-            except Exception as e:
-                print(f"[Warning] SpoonOS Agent failed in fix_json: {e}. Using direct Groq.")
-        
-        # Fallback to direct Groq
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "Fix JSON formatting only."},
-                {"role": "user", "content": fix_prompt}
-            ],
-            temperature=0.0,
-        )
-
-        return json.loads(response.choices[0].message.content)
+                loop = asyncio.get_running_loop()
+                # We're in an async context, need to use async version
+                raise RuntimeError(
+                    "Cannot use sync _fix_json in async context. Use _fix_json_async instead."
+                )
+            except RuntimeError as e:
+                if "async context" in str(e):
+                    raise
+                # No event loop, we can use asyncio.run
+                response = asyncio.run(self.spoon_agent.run(full_prompt))
+                content = response.content if hasattr(response, 'content') else str(response)
+                return json.loads(content)
+        except Exception as e:
+            raise RuntimeError(
+                f"SpoonOS Agent failed while fixing JSON.\n"
+                f"Original error: {e}\n"
+                f"Please check your GROQ_API_KEY and network connection."
+            ) from e
 
 
 def generate_hypothesis(paper_a_json: Dict[str, Any], paper_b_json: Dict[str, Any],

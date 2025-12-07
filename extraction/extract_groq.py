@@ -69,8 +69,26 @@ async def extract_structure_async(text, title=""):
     This function converts a paper (abstract or full text) into structured JSON
     with claims, methods, evidence, limitations, and variables.
     
-    Uses SpoonOS LLM protocol layer (Agent → SpoonOS → LLM).
+    Uses SpoonOS LLM protocol layer (Tool → SpoonOS → LLM).
+    
+    REQUIRES: SpoonOS must be installed and properly configured.
+    Raises RuntimeError if SpoonOS is unavailable.
     """
+    # STRICT REQUIREMENT: SpoonOS must be available
+    if not SPOON_AVAILABLE:
+        raise RuntimeError(
+            "SpoonOS is REQUIRED for this project.\n"
+            "Install with: pip install spoon-ai-sdk\n"
+            "Ensure GROQ_API_KEY is set in extraction/.env"
+        )
+    
+    if not chatbot and not llm_manager:
+        raise RuntimeError(
+            "SpoonOS ChatBot or LLMManager must be initialized.\n"
+            "Check that GROQ_API_KEY is set in extraction/.env\n"
+            "SpoonOS initialization may have failed during import."
+        )
+    
     prompt = f"""
 You are extracting structured scientific information from a research paper.
 
@@ -92,8 +110,8 @@ Extract the following fields in STRICT JSON format:
 Return ONLY valid JSON. Do not add commentary.
     """
 
-    # Use SpoonOS if available
-    if SPOON_AVAILABLE and chatbot:
+    # Use SpoonOS ChatBot (primary) or LLMManager (fallback)
+    if chatbot:
         try:
             print("[SpoonOS Phase 1] Using SpoonOS ChatBot for extraction (Tool -> SpoonOS -> LLM)")
             response = await chatbot.chat([
@@ -103,33 +121,49 @@ Return ONLY valid JSON. Do not add commentary.
             content = response.content if hasattr(response, 'content') else str(response)
             print("[SpoonOS Phase 1] Successfully got response from SpoonOS ChatBot")
         except Exception as e:
-            print(f"[Warning] SpoonOS ChatBot failed: {e}. Trying LLMManager...")
+            # Try LLMManager if ChatBot fails
             if llm_manager:
-                print("[SpoonOS Phase 1] Trying LLMManager as fallback...")
+                print(f"[Warning] SpoonOS ChatBot failed: {e}. Trying LLMManager...")
                 try:
                     response = await llm_manager.chat([
                         {"role": "system", "content": "Return STRICT JSON only."},
                         {"role": "user", "content": prompt}
                     ])
                     content = response.content if hasattr(response, 'content') else str(response)
+                    print("[SpoonOS Phase 1] Successfully got response from SpoonOS LLMManager")
                 except Exception as e2:
-                    print(f"[Warning] SpoonOS LLMManager failed: {e2}. Falling back to direct Groq.")
-                    return _extract_with_groq(text, title)
+                    raise RuntimeError(
+                        f"SpoonOS call failed (both ChatBot and LLMManager failed).\n"
+                        f"ChatBot error: {e}\n"
+                        f"LLMManager error: {e2}\n"
+                        f"Please check your GROQ_API_KEY and network connection."
+                    ) from e2
             else:
-                return _extract_with_groq(text, title)
-    elif SPOON_AVAILABLE and llm_manager:
+                raise RuntimeError(
+                    f"SpoonOS ChatBot failed and LLMManager is not available.\n"
+                    f"Error: {e}\n"
+                    f"Please check your GROQ_API_KEY and network connection."
+                ) from e
+    elif llm_manager:
         try:
+            print("[SpoonOS Phase 1] Using SpoonOS LLMManager for extraction (Tool -> SpoonOS -> LLM)")
             response = await llm_manager.chat([
                 {"role": "system", "content": "Return STRICT JSON only."},
                 {"role": "user", "content": prompt}
             ])
             content = response.content if hasattr(response, 'content') else str(response)
+            print("[SpoonOS Phase 1] Successfully got response from SpoonOS LLMManager")
         except Exception as e:
-            print(f"[Warning] SpoonOS LLMManager failed: {e}. Falling back to direct Groq.")
-            return _extract_with_groq(text, title)
+            raise RuntimeError(
+                f"SpoonOS LLMManager call failed.\n"
+                f"Error: {e}\n"
+                f"Please check your GROQ_API_KEY and network connection."
+            ) from e
     else:
-        # Fallback to direct Groq
-        return _extract_with_groq(text, title)
+        raise RuntimeError(
+            "SpoonOS ChatBot and LLMManager are both unavailable.\n"
+            "SpoonOS initialization may have failed. Check your configuration."
+        )
     
     # Strip markdown code blocks if present
     content = content.strip()

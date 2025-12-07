@@ -135,4 +135,5 @@ if __name__ == "__main__":
     
     filtered = list_hypotheses({"variables_used": ["temperature"]})
     print(f"Filtered by temperature: {len(filtered)}")
-
+    
+    

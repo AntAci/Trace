@@ -1,307 +1,231 @@
-# Trace: Scientific Paper Hypothesis Generation Pipeline
+# Trace: Scientific Hypothesis Generation Pipeline
 
-**Transform research papers into testable hypotheses on the blockchain**
+**Trace** is an AI-powered pipeline that processes two research paper PDFs and generates testable scientific hypotheses by identifying synergies and combining insights from both papers.
 
-Trace is an intelligent 4-phase pipeline that extracts structured information from scientific papers, identifies synergies between them, generates testable hypotheses, and mints them to an off-chain registry and Neo blockchain for immutable proof and verification.
+## Overview
 
----
+Trace uses Large Language Models (LLMs) to extract structured information from research papers, analyzes synergies and conflicts between them using graph-based reasoning, and generates falsifiable scientific hypotheses. The system integrates with Neo blockchain for verification and NeoFS for decentralized storage.
 
-## 🎯 Overview
+## Features
 
-Trace takes **2 research paper PDFs** and automatically:
+- **5-Phase Pipeline:** PDF reading → Extraction → Synergy Analysis → Hypothesis Generation → Minting
+- **SpoonOS Integration:** Uses SpoonOS Agent protocol and Tools throughout
+- **Workflow Orchestration:** Spoon StateGraph for reliable pipeline execution
+- **Graph-Based Reasoning:** Identifies synergies and conflicts using knowledge graphs
+- **Semantic Validation:** Prevents hallucinations by validating all claim references
+- **Blockchain Verification:** Neo blockchain attestation with content hashing
+- **Decentralized Storage:** NeoFS integration for hypothesis storage
+- **Micropayment Support:** X402 payment protocol integration
 
-1. **Extracts** structured scientific information (claims, methods, evidence, limitations, variables)
-2. **Analyzes** synergies and conflicts between papers using graph-based reasoning
-3. **Generates** a testable scientific hypothesis combining elements from both papers
-4. **Mints** the hypothesis to a registry and blockchain with cryptographic verification
-
-**Key Features:**
-- 🤖 **LLM-Powered**: Uses Groq LLM (llama-3.3-70b-versatile) for intelligent extraction and reasoning
-- 📊 **Graph-Based Analysis**: In-memory graph representation for relationship mapping
-- 🔒 **Blockchain Integration**: Immutable proof via Neo blockchain + off-chain registry
-- 🔍 **Semantic Validation**: Anti-hallucination checks ensure all references are valid
-- 📄 **PDF Processing**: Automatically extracts title and abstract from PDFs
-- 🎯 **Deterministic Hashing**: SHA-256 content hashing for verification
-
----
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- Groq API key ([Get one here](https://console.groq.com/))
+- Python 3.11+
+- Groq API key
+- (Optional) Neo wallet for blockchain integration
+- (Optional) NeoFS configuration for decentralized storage
+- (Optional) X402 configuration for micropayments
 
 ### Installation
 
-1. **Clone or download the repository**
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Set up API key:**
-   
-   Create `extraction/.env`:
-   ```env
-   GROQ_API_KEY=your_groq_api_key_here
-   ```
-
-4. **Add PDFs:**
-   
-   Place exactly **2 PDF files** in the `input_pdfs/` folder:
-   ```
-   input_pdfs/
-   ├── paper_a.pdf
-   └── paper_b.pdf
-   ```
-
-5. **Run the pipeline:**
-   ```bash
-   python process_papers.py
-   ```
-
-   Or with custom options:
-   ```bash
-   python process_papers.py --input-folder input_pdfs --author-wallet NYourWalletAddress
-   ```
-
----
-
-## 📋 How It Works
-
-### Pipeline Flow
-
-```
-2 PDF Files (input_pdfs/)
-    ↓
-[PDF Reading] Extract title + abstract only (~3000 chars each)
-    ↓
-[Phase 1] Structured Extraction (LLM)
-    Paper A JSON + Paper B JSON
-    ↓
-[Phase 2] Synergy Analysis (LLM + Graph)
-    Synergy JSON (with graph structure)
-    ↓
-[Phase 3] Hypothesis Generation (LLM)
-    Hypothesis Card JSON
-    ↓
-[Phase 4] Minting (Deterministic Hashing + Storage)
-    Mint Result + Saved Files
-```
-
-### Phase Details
-
-#### **Phase 0: PDF Reading**
-- Extracts text from first 2 pages of each PDF
-- Intelligently finds and extracts abstract section
-- Extracts title from PDF metadata or first line
-- Limits to ~3000 characters to stay within API token limits
-
-#### **Phase 1: Structured Extraction**
-- Uses Groq LLM to extract structured information from each paper
-- Extracts: **claims** (all), **methods**, **evidence** (1-2 items), **limitations** (explicit/implicit), **variables**
-- Assigns unique IDs to claims: `A_claim_1`, `A_claim_2`, etc.
-- Returns structured JSON for each paper
-
-#### **Phase 2: Synergy Analysis**
-- Builds in-memory graph with nodes (claims, variables) and edges (relationships)
-- Uses LLM to identify:
-  - **Overlapping variables** (semantic matching across papers)
-  - **Potential synergies** (complementary findings)
-  - **Potential conflicts** (contradictions)
-- Enhances graph with synergy/conflict relationships
-- Returns analysis JSON with graph structure
-
-#### **Phase 3: Hypothesis Generation**
-- Selects primary synergy (highest-scoring based on variables and claims)
-- Uses LLM to generate testable "if-then" hypothesis
-- Includes: rationale, experiment design, confidence level, risk notes
-- **Semantic validation**: Verifies all referenced claim IDs and variables exist
-- Auto-fixes invalid references or marks as low confidence
-
-#### **Phase 4: Minting**
-- Validates hypothesis card structure
-- **Canonicalises JSON** (deterministic format with sorted keys)
-- Computes **SHA-256 content hash** for verification
-- Saves to **off-chain registry** (`data/hypotheses/{id}.json`)
-- Writes **Neo blockchain receipt** (hypothesis_id, hash, author, timestamp)
-- **NeoFS storage** (SpoonOS Tool) - Decentralized storage on NeoFS network
-- **X402 payment** (SpoonOS Tool) - Optional micropayment for premium minting
-- Returns mint result with all metadata
-
-### SpoonOS Tool Integrations
-
-This project uses official **SpoonOS toolkit tools** to satisfy hackathon requirements:
-
-#### NeoFS Storage Tool
-Decentralized storage for hypothesis data using `spoon_ai.tools.neofs_tools`:
-```python
-from phase4.spoon_tools import SpoonToolManager
-
-manager = SpoonToolManager()
-await manager.initialize()
-result = await manager.store_hypothesis(hypothesis_card)
-# Returns: {object_id, container_id, success}
-```
-
-#### X402 Payment Tool
-Micropayment protocol for premium minting using `spoon_ai.tools.x402_payment`:
-```python
-result = await manager.process_payment(
-    hypothesis_id="trace_hyp_001",
-    content_hash="0x...",
-    author_wallet="NWallet..."
-)
-# Returns: {tx_hash, amount_usdc, network, success}
-```
-
-**Configuration** (add to `extraction/.env`):
+1. Clone the repository:
 ```bash
-# NeoFS Configuration
-NEOFS_BASE_URL=grpc://st1.storage.fs.neo.org:8080
+git clone <repository-url>
+cd Trace
+```
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Configure environment variables:
+```bash
+# Create extraction/.env file
+GROQ_API_KEY=your_groq_api_key_here
+
+# Optional: Neo blockchain
+NEO_NETWORK=testnet
+NEO_PRIVATE_KEY=your_wif_private_key
+
+# Optional: NeoFS storage
+NEOFS_ENDPOINT=grpc://st1.storage.fs.neo.org:8080
 NEOFS_OWNER_ADDRESS=NXxxxxYourNeoAddressHere
 NEOFS_PRIVATE_KEY_WIF=your_wif_private_key
 
-# X402 Configuration (optional)
+# Optional: X402 payment
 X402_PRIVATE_KEY=0x...your_eth_private_key
 X402_RECEIVER_ADDRESS=0x...
 X402_NETWORK=base-sepolia
 X402_MINT_FEE=0.001
 ```
 
----
+4. Place 2 PDF files in `input_pdfs/` folder
 
-## 📁 Project Structure
-
-```
-Trace/
-├── input_pdfs/              # Place 2 PDF files here
-│   ├── paper_a.pdf
-│   └── paper_b.pdf
-│
-├── extraction/              # Phase 1: Paper structure extraction
-│   ├── pdf_reader.py       # PDF text extraction (title + abstract)
-│   ├── extract_groq.py      # Groq LLM integration
-│   ├── extract_paper.py    # Core extraction function
-│   ├── spoon_tool.py        # SpoonOS tool wrapper
-│   ├── .env                # API keys (create from .env.example)
-│   └── .env.example        # Environment template
-│
-├── phase2/                  # Phase 2: Synergy analysis
-│   └── synergy_agent.py    # Graph building + LLM analysis
-│
-├── phase3/                  # Phase 3: Hypothesis generation
-│   └── hypothesis_agent.py  # Hypothesis generation + validation
-│
-├── phase4/                  # Phase 4: Hypothesis minting
-│   ├── minting_service.py  # Core minting logic
-│   ├── spoon_tools.py      # SpoonOS NeoFS + X402 integrations
-│   ├── registry_store.py   # Off-chain storage
-│   └── neo_client.py       # Neo blockchain client
-│
-├── data/                    # Generated at runtime
-│   └── hypotheses/         # Registry (JSON files)
-│       └── trace_hyp_*.json
-│
-├── process_papers.py        # Main entry point
-├── requirements.txt         # All dependencies
-└── README.md               # This file
+5. Run the pipeline:
+```bash
+python process_papers.py --author-wallet NYourWalletAddress
 ```
 
----
+## How It Works
 
-## 🔧 Requirements
+### Pipeline Flow
 
-### Dependencies
-
-All dependencies are in `requirements.txt`:
-
-- `groq` - LLM API client
-- `python-dotenv` - Environment variable management
-- `requests` - HTTP requests
-- `PyPDF2>=3.0` - PDF text extraction
-- `spoon-ai-sdk` - SpoonOS integration (optional)
-- `neo3-python` - Neo blockchain SDK (optional, commented out)
-
-### Configuration
-
-- **GROQ_API_KEY**: Required in `extraction/.env`
-- **Input**: Exactly 2 PDF files in `input_pdfs/` folder
-- **Author Wallet**: Optional Neo wallet address for minting (default: "NXXXX...")
-
----
-
-## 📊 Example Output
-
-### Generated Hypothesis
-
-```json
-{
-  "hypothesis_id": "trace_hyp_7e88207e",
-  "primary_synergy_id": "syn_1",
-  "hypothesis": "If a blockchain-based approach to verify research data integrity from Paper A is applied to Agentic AI systems from Paper B, then the reproducibility rate of research findings will increase.",
-  "rationale": "The combination of blockchain-based approaches (A_claim_1, A_claim_3) with Agentic AI systems (B_claim_1, B_claim_4) could leverage the strengths of both...",
-  "source_support": {
-    "paper_A_claim_ids": ["A_claim_1", "A_claim_3"],
-    "paper_B_claim_ids": ["B_claim_1", "B_claim_4"],
-    "variables_used": ["Research data", "Data integrity", "Reproducibility rate"]
-  },
-  "proposed_experiment": {
-    "description": "Implement a blockchain-based system to track and verify research data...",
-    "measurements": ["Reproducibility rate", "Data integrity checks"],
-    "expected_direction": "increase"
-  },
-  "confidence": "medium",
-  "risk_notes": [
-    "Assuming Agentic AI systems can effectively integrate with blockchain technology",
-    "Potential for increased complexity in the research process"
-  ],
-  "content_hash": "0x78e26a17e1e881ef210edeccdb5e0606fe079882dac88cf806175a3c023715b2",
-  "created_at": "2025-12-06T15:11:11.607850+00:00",
-  "version": "v1",
-  "author_wallet": "NXXXX...",
-  "neo_tx_id": "0x0000000000000000000000000000000000000000000000000000000000000000"
-}
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    INPUT: 2 PDF Files                        │
+│                  (input_pdfs/ folder)                        │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              PHASE 0: PDF Reading                            │
+│  • Extract title + abstract from each PDF                   │
+│  • Limit to ~3000-5000 characters                           │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│         PHASE 1: Structured Extraction                      │
+│  • Extract claims, methods, evidence, limitations, vars   │
+│  • Uses SpoonOS Tool → SpoonOS → Groq LLM                   │
+│  • Output: Paper A JSON + Paper B JSON (parallel)          │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│         PHASE 2: Synergy Analysis                           │
+│  • Build graph (claims, variables, relationships)          │
+│  • Identify overlapping variables                         │
+│  • Find synergies and conflicts                            │
+│  • Uses SpoonOS Agent (SpoonReactAI)                        │
+│  • Output: Synergy JSON with graph structure               │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│         PHASE 3: Hypothesis Generation                      │
+│  • Select primary synergy                                │
+│  • Generate testable "if-then" hypothesis                  │
+│  • Semantic validation (anti-hallucination)               │
+│  • Retry logic (up to 2 retries)                          │
+│  • Uses SpoonOS Agent (SpoonReactAI)                        │
+│  • Output: Hypothesis Card JSON                            │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│         PHASE 4: Hypothesis Minting                         │
+│  • Validate hypothesis card                                │
+│  • Canonicalise JSON (deterministic)                        │
+│  • Compute SHA-256 content hash                            │
+│  • Save to off-chain registry                              │
+│  • Write Neo blockchain receipt                             │
+│  • Store on NeoFS (SpoonOS Tool)                           │
+│  • Process X402 payment (SpoonOS Tool, optional)           │
+│  • Output: Mint Result + Saved Files                        │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    OUTPUT: Complete Results                  │
+│  • Paper A JSON                                            │
+│  • Paper B JSON                                            │
+│  • Synergy Analysis JSON                                   │
+│  • Hypothesis Card JSON                                    │
+│  • Mint Result (hash, tx IDs, etc.)                        │
+│  • Saved files in data/hypotheses/                         │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Saved to**: `data/hypotheses/trace_hyp_7e88207e.json`
+### Phase Details
 
----
+#### Phase 0: PDF Reading
+- Extracts title and abstract from each PDF
+- Uses PyPDF2 for PDF parsing
+- Limits text to ~3000-5000 characters to reduce token usage
 
-## 💻 Usage
+#### Phase 1: Structured Extraction
+- Uses SpoonOS Tool to extract structured information
+- Extracts: claims, methods, evidence (1-2 items), limitations, variables
+- Runs in parallel for both papers
+- Uses Groq LLM (llama-3.3-70b-versatile) via SpoonOS
 
-### Basic Usage
+#### Phase 2: Synergy Analysis
+- Builds knowledge graph from Phase 1 outputs
+- Uses SpoonOS Agent to identify:
+  - Overlapping variables (semantic matching)
+  - Potential synergies (complementary findings)
+  - Potential conflicts (contradictions)
+- Enhances graph with analysis results
+
+#### Phase 3: Hypothesis Generation
+- Selects primary synergy based on scoring
+- Generates testable "if-then" hypothesis
+- Validates semantic grounding (all claim IDs must exist)
+- Retry logic: up to 2 retries if validation fails
+- Auto-fixes invalid references or marks low confidence
+
+#### Phase 4: Hypothesis Minting
+- Validates hypothesis card structure
+- Creates deterministic JSON (canonical form)
+- Computes SHA-256 content hash
+- Saves to off-chain registry (`data/hypotheses/`)
+- Writes Neo blockchain receipt (on-chain attestation)
+- Stores on NeoFS using SpoonOS Tools (decentralized storage)
+- Processes X402 payment using SpoonOS Tools (micropayment)
+
+### Workflow Orchestration
+
+The pipeline uses **Spoon StateGraph** for workflow orchestration:
+
+- **Nodes:** Each phase is a node in the workflow graph
+- **State:** `PipelineState` TypedDict flows through all nodes
+- **Parallel Execution:** Phase 1 runs both extractions in parallel
+- **Error Handling:** Nodes set error state on failure, subsequent nodes skip
+- **Fallback:** If StateGraph unavailable, falls back to sequential processing
+
+## Usage
+
+### Command Line
 
 ```bash
-# Process 2 PDFs from default folder (input_pdfs/)
+# Basic usage (defaults)
 python process_papers.py
-```
 
-### Custom Options
-
-```bash
-# Specify custom input folder
+# Specify input folder
 python process_papers.py --input-folder /path/to/pdfs
 
-# Specify author wallet address
+# Specify author wallet
 python process_papers.py --author-wallet NYourNeoWalletAddress
 
-# Both options
-python process_papers.py --input-folder input_pdfs --author-wallet NYourWallet
+# Disable NeoFS
+python process_papers.py --no-neofs
+
+# Enable X402 payment
+python process_papers.py --use-x402
+
+# All options
+python process_papers.py \
+  --input-folder input_pdfs \
+  --author-wallet NYourWallet \
+  --use-neofs \
+  --use-x402
 ```
 
-### Programmatic Usage
+### Python API
 
 ```python
 import asyncio
 from process_papers import process_papers_from_folder
 
-# Process papers programmatically
+# Process 2 PDFs from default folder
 result = asyncio.run(process_papers_from_folder(
     input_folder="input_pdfs",
-    author_wallet="NYourWalletAddress"
+    author_wallet="NYourWalletAddress",
+    use_neofs=True,
+    use_x402=False
 ))
 
 # Access results
@@ -314,154 +238,227 @@ if "error" not in result:
     
     print(f"Hypothesis ID: {mint_result['hypothesis_id']}")
     print(f"Content Hash: {mint_result['content_hash']}")
+    print(f"Neo TX ID: {mint_result['neo_tx_id']}")
 ```
 
+## Output Structure
+
+### Hypothesis Card
+
+Each generated hypothesis is saved as a JSON file in `data/hypotheses/`:
+
+```json
+{
+  "hypothesis_id": "trace_hyp_d5a1e2e3",
+  "primary_synergy_id": "syn_1",
+  "hypothesis": "If blockchain-based approaches from Paper A are applied to Agentic AI systems from Paper B, then the reproducibility of scientific research will increase.",
+  "rationale": "Explanation referencing claim IDs...",
+  "source_support": {
+    "paper_A_claim_ids": ["A_claim_1", "A_claim_3"],
+    "paper_B_claim_ids": ["B_claim_1", "B_claim_4"],
+    "variables_used": ["temperature", "state_of_health"]
+  },
+  "proposed_experiment": {
+    "description": "Experimental setup...",
+    "measurements": ["measurement1", "measurement2"],
+    "expected_direction": "increase"
+  },
+  "confidence": "medium",
+  "risk_notes": ["Assumption 1", "Assumption 2"],
+  "content_hash": "0xb77781389cc4beeafcc1732be749635921e96d3b900b23590d9c1f39e3df4c01",
+  "created_at": "2025-12-07T01:22:28.524999+00:00",
+  "version": "v1",
+  "author_wallet": "NYourWalletAddress",
+  "neo_tx_id": "0xc436a739627d8941a460bbc3314506fff5387ceb621eeadc5e891e66318efac8",
+  "neofs_object_id": "object_id_from_neofs",
+  "neofs_container_id": "container_id_from_neofs"
+}
+```
+
+### Mint Result
+
+The mint result contains all transaction IDs and metadata:
+
+```json
+{
+  "hypothesis_id": "trace_hyp_d5a1e2e3",
+  "content_hash": "0xb77781389cc4beeafcc1732be749635921e96d3b900b23590d9c1f39e3df4c01",
+  "neo_tx_id": "0xc436a739627d8941a460bbc3314506fff5387ceb621eeadc5e891e66318efac8",
+  "created_at": "2025-12-07T01:22:28.524999+00:00",
+  "version": "v1",
+  "neofs": {
+    "object_id": "object_id_from_neofs",
+    "container_id": "container_id_from_neofs",
+    "success": true
+  },
+  "x402": {
+    "tx_hash": "0x...",
+    "amount_usdc": 0.001,
+    "network": "base-sepolia",
+    "success": true
+  }
+}
+```
+
+## NeoFS Integration
+
+Trace uses **SpoonOS NeoFS Tools** for decentralized storage:
+
+- **CreateContainerTool:** Creates storage containers on NeoFS
+- **UploadObjectTool:** Uploads hypothesis cards to NeoFS
+- **DownloadObjectByIdTool:** Retrieves stored hypotheses
+- **SearchObjectsTool:** Searches hypotheses by attributes
+
+### NeoFS Configuration
+
+```bash
+NEOFS_ENDPOINT=grpc://st1.storage.fs.neo.org:8080
+NEOFS_OWNER_ADDRESS=NXxxxxYourNeoAddressHere
+NEOFS_PRIVATE_KEY_WIF=your_wif_private_key
+NEOFS_CONTAINER_ID=optional_existing_container_id
+```
+
+When enabled, hypotheses are automatically stored on NeoFS with searchable attributes (HypothesisId, ContentHash, Type, etc.).
+
+## X402 Payment Integration
+
+Trace uses **SpoonOS X402 Tools** for micropayment processing:
+
+- **X402PaymentHeaderTool:** Generates payment headers
+- **X402PaywalledRequestTool:** Processes paywalled requests
+
+### X402 Configuration
+
+```bash
+X402_PRIVATE_KEY=0x...your_eth_private_key
+X402_RECEIVER_ADDRESS=0x...
+X402_NETWORK=base-sepolia
+X402_MINT_FEE=0.001
+```
+
+When enabled, each hypothesis minting triggers an X402 micropayment (default: 0.001 USDC on base-sepolia network).
+
+## Neo Blockchain Integration
+
+Trace writes hypothesis receipts to the Neo blockchain:
+
+- **Content Hash:** SHA-256 hash of canonical hypothesis JSON
+- **Transaction ID:** Neo transaction ID for on-chain attestation
+- **Author Wallet:** Wallet address of hypothesis author
+
+### Neo Configuration
+
+```bash
+NEO_NETWORK=testnet
+NEO_PRIVATE_KEY=your_wif_private_key
+NEO_RPC_URL=custom_rpc_url
+NEO_REGISTRY_CONTRACT=contract_hash
+```
+
+The system uses `neo-mamba` SDK for blockchain interactions. If unavailable, it falls back to mock transaction IDs.
+
+## SpoonOS Integration
+
+Trace extensively uses SpoonOS throughout:
+
+### Phase 1: SpoonOS Tool
+- Tool: `extract_paper_structure`
+- Function: Extracts structured information from paper text
+- Flow: Tool → SpoonOS ChatBot → Groq LLM
+
+### Phase 2 & 3: SpoonOS Agent
+- Agent: `SpoonReactAI`
+- Function: Analyzes synergies and generates hypotheses
+- Flow: Agent → SpoonOS ChatBot → Groq LLM
+
+### Phase 4: SpoonOS Tools
+- NeoFS Tools: `CreateContainerTool`, `UploadObjectTool`, etc.
+- X402 Tools: `X402PaymentHeaderTool`, `X402PaywalledRequestTool`
+
+## Error Handling
+
+The pipeline includes comprehensive error handling:
+
+- **Phase 0:** Validates PDF files exist and are readable
+- **Phase 1:** Auto-repairs malformed JSON from LLM
+- **Phase 2:** Validates input structure, handles LLM failures
+- **Phase 3:** Retry logic (up to 2 retries) with semantic validation
+- **Phase 4:** Graceful degradation if NeoFS/X402 unavailable
+
+All errors are logged and included in the result dictionary.
+
+## Performance
+
+### Typical Execution Times
+
+- **PDF Reading:** ~1 second
+- **Phase 1:** ~3-6 seconds (2 LLM calls, parallel)
+- **Phase 2:** ~3-5 seconds (1 LLM call)
+- **Phase 3:** ~3-5 seconds (1 LLM call, may retry)
+- **Phase 4:** ~1-2 seconds (local + optional NeoFS/X402)
+
+**Total:** ~10-18 seconds for complete pipeline
+
+### Token Usage
+
+- **Phase 1:** ~2000-4000 tokens per paper
+- **Phase 2:** ~3000-5000 tokens
+- **Phase 3:** ~3000-5000 tokens
+
+**Total:** ~11,000-19,000 tokens per pipeline run
+
+## Project Structure
+
+```
+Trace/
+├── extraction/          # Phase 0 & 1
+│   ├── pdf_reader.py     # PDF text extraction
+│   ├── spoon_tool.py     # SpoonOS Tool for extraction
+│   └── extract_paper.py  # Core LLM extraction logic
+├── phase2/              # Phase 2
+│   └── synergy_agent.py # SpoonOS Agent for synergy analysis
+├── phase3/              # Phase 3
+│   └── hypothesis_agent.py # SpoonOS Agent for hypothesis generation
+├── phase4/              # Phase 4
+│   ├── minting_service.py # Core minting logic
+│   ├── registry_store.py  # Off-chain registry
+│   ├── neo_client.py      # Neo blockchain integration
+│   └── spoon_tools.py     # NeoFS & X402 SpoonOS Tools
+├── pipeline_workflow.py  # Spoon StateGraph workflow
+├── process_papers.py     # Main entry point
+├── input_pdfs/          # Input PDF files (2 required)
+└── data/
+    └── hypotheses/       # Generated hypothesis cards
+```
+
+## Requirements
+
+### Required
+
+- `groq` - LLM API client
+- `python-dotenv` - Environment variable management
+- `PyPDF2>=3.0` - PDF text extraction
+- `spoon-ai-sdk` - SpoonOS integration
+
+### Optional
+
+- `neo-mamba` - Neo blockchain SDK (for real on-chain attestations)
+- NeoFS SDK (included in spoon-ai-sdk if available)
+- X402 SDK (included in spoon-ai-sdk if available)
+
+## License
+
+See LICENSE file for details.
+
+## Contributing
+
+Contributions are welcome! Please ensure all tests pass and follow the existing code style.
+
+## Support
+
+For issues and questions, please open an issue on the repository.
+
 ---
 
-## 🔍 Key Features Explained
+**Trace** - Generating testable scientific hypotheses from research papers.
 
-### Intelligent PDF Extraction
-- Only extracts **title and abstract** (not full paper)
-- Reduces token usage by ~90%
-- Automatically finds abstract section
-- Extracts title from metadata or first line
-
-### Graph-Based Analysis
-- Builds in-memory graph with:
-  - **Nodes**: Claims, Variables (from both papers)
-  - **Edges**: Relationships (uses_variable, potential_synergy, potential_conflict)
-- Enables relationship visualization and querying
-- Supports future graph-based reasoning
-
-### Semantic Grounding Validation
-- **Post-generation check**: Verifies all referenced claim IDs exist
-- **Variable validation**: Ensures all variables exist in input papers
-- **Auto-fix**: Removes invalid references automatically
-- **Transparency**: Marks low confidence if unfixable issues found
-
-### Deterministic Hashing
-- **Canonical JSON**: Sorted keys at all levels for consistency
-- **SHA-256 hash**: Unique fingerprint of hypothesis content
-- **Verification**: Can recompute hash to verify integrity
-- **Immutability**: Hash proves content hasn't changed
-
-### Dual Storage Architecture
-- **Off-chain registry**: Full data, fast queries, easy searching (`data/hypotheses/`)
-- **On-chain (Neo)**: Immutable proof, timestamp, author verification
-- **Separation**: Data storage vs. proof storage
-
----
-
-## ⚙️ Technical Details
-
-### LLM Configuration
-- **Model**: Groq llama-3.3-70b-versatile
-- **Temperature**: 0.1 (for consistency in structured extraction)
-- **API**: Groq API (fast inference)
-
-### Performance
-- **Typical execution time**: 10-18 seconds for 2 papers
-- **Token usage**: ~11,000-19,000 tokens per pipeline run
-- **PDF processing**: ~1 second
-- **LLM calls**: 4 total (Phase 1: 2, Phase 2: 1, Phase 3: 1)
-
-### Error Handling
-- Input validation at each phase
-- JSON repair fallback for malformed LLM responses
-- Clear error messages with phase identification
-- Graceful degradation (e.g., mock Neo transaction if SDK not available)
-
-### Security
-- API keys stored in `.env` (never committed)
-- Input validation prevents injection attacks
-- Content hashing enables integrity verification
-- Blockchain provides immutable timestamp
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**"No PDF files found"**
-- Ensure exactly 2 PDF files are in `input_pdfs/` folder
-- Check file extensions are `.pdf` (case-insensitive)
-
-**"GROQ_API_KEY not found"**
-- Create `extraction/.env` file
-- Add line: `GROQ_API_KEY=your_key_here`
-- Get key from https://console.groq.com/
-
-**"Request too large for model"**
-- PDFs are automatically truncated to abstract only
-- If still failing, check PDF text extraction is working
-- Try with shorter abstracts
-
-**"Neo SDK not available"**
-- This is a warning, not an error
-- Pipeline continues with mock transaction ID
-- Install `neo3-python` for real blockchain integration
-
-**Import errors**
-- Ensure all dependencies installed: `pip install -r requirements.txt`
-- Check Python version: `python --version` (needs 3.8+)
-
----
-
-## 📖 Output Files
-
-### Registry Files
-- **Location**: `data/hypotheses/{hypothesis_id}.json`
-- **Content**: Full hypothesis card with all metadata
-- **Format**: JSON
-- **Purpose**: Fast queries, complete data access
-
-### Blockchain Receipt
-- **Location**: Neo blockchain (or mock if SDK not available)
-- **Content**: hypothesis_id, content_hash, author, timestamp
-- **Purpose**: Immutable proof, verification
-
----
-
-## 🔄 Pipeline Phases Summary
-
-| Phase | Input | Output | Key Technology |
-|-------|-------|--------|----------------|
-| **0: PDF Reading** | 2 PDF files | Title + Abstract text | PyPDF2 |
-| **1: Extraction** | Paper text | Structured JSON | Groq LLM |
-| **2: Analysis** | 2 Paper JSONs | Synergy JSON + Graph | Groq LLM + Graph |
-| **3: Generation** | Papers + Synergy | Hypothesis Card | Groq LLM + Validation |
-| **4: Minting** | Hypothesis Card | Mint Result + Files | SHA-256 + Neo |
-
----
-
-## ✅ Status
-
-**All phases complete and tested** ✅
-
-- ✅ Phase 1: PDF reading + structured extraction
-- ✅ Phase 2: Synergy and conflict analysis
-- ✅ Phase 3: Hypothesis generation with validation
-- ✅ Phase 4: Minting to registry and blockchain
-
-**Ready for production use** with:
-- Real Groq API key
-- Neo blockchain integration (optional)
-- 2 PDF files in `input_pdfs/` folder
-
----
-
-## 📝 License
-
-See [LICENSE](LICENSE) file for details.
-
----
-
-## 🤝 Contributing
-
-This is a research project. For questions or issues, please check the code documentation in each phase directory.
-
----
-
-**Version**: 1.0  
-**Last Updated**: 2025-12-06

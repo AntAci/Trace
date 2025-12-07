@@ -33,6 +33,9 @@ except ImportError:
         client = Groq(api_key=api_key)
     MODEL = "llama-3.3-70b-versatile"
 
+# Knowledge graph is dict-based (not Spoon graph objects)
+# Spoon graph will be used for workflow orchestration, not knowledge representation
+
 # Initialize SpoonOS components if available
 spoon_agent = None
 spoon_chatbot = None
@@ -93,10 +96,27 @@ class SynergyAgent:
     """
     
     def __init__(self):
-        """Initialize the agent with SpoonOS Agent (or fallback to Groq)."""
+        """Initialize the agent with SpoonOS Agent (REQUIRED)."""
+        # STRICT REQUIREMENT: SpoonOS must be available
+        if not SPOON_AVAILABLE:
+            raise RuntimeError(
+                "SpoonOS is REQUIRED for this project.\n"
+                "Install with: pip install spoon-ai-sdk\n"
+                "Ensure GROQ_API_KEY is set in extraction/.env"
+            )
+        
+        if spoon_agent is None:
+            raise RuntimeError(
+                "SpoonOS Agent is not initialized.\n"
+                "Check that GROQ_API_KEY is set in extraction/.env\n"
+                "SpoonOS Agent initialization may have failed during import.\n"
+                "Check the console output for initialization errors."
+            )
+        
         self.spoon_agent = spoon_agent
-        self.spoon_available = SPOON_AVAILABLE and spoon_agent is not None
-        # Always initialize Groq client as fallback
+        self.spoon_available = True  # Always True if we get here
+        
+        # Keep Groq client for JSON fix operations (not for primary LLM calls)
         from groq import Groq
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
@@ -107,26 +127,28 @@ class SynergyAgent:
     async def analyze_async(self, paper_a_json: Dict[str, Any], paper_b_json: Dict[str, Any]) -> Dict[str, Any]:
         """
         Async version of analyze that properly uses SpoonOS Agent.
+        Knowledge graph is dict-based (not Spoon graph objects).
         """
         # Validate inputs
         self._validate_phase1_json(paper_a_json, "Paper A")
         self._validate_phase1_json(paper_b_json, "Paper B")
         
-        # Build in-memory graph
-        graph = self._build_graph(paper_a_json, paper_b_json)
+        # Build graph using dict-based representation (knowledge graph stays as dict)
+        graph_dict = self._build_graph(paper_a_json, paper_b_json)
         
         # Use SpoonOS to analyze overlaps, synergies, and conflicts
-        analysis = await self._analyze_with_spoonos_async(paper_a_json, paper_b_json, graph)
+        analysis = await self._analyze_with_spoonos_async(paper_a_json, paper_b_json, graph_dict)
         
         # Enhance graph with overlapping variables and synergy/conflict edges
-        enhanced_graph = self._enhance_graph_with_analysis(graph, analysis, paper_a_json, paper_b_json)
+        final_graph_dict = self._enhance_graph_with_analysis(graph_dict, analysis, paper_a_json, paper_b_json)
         
         # Combine graph and analysis
         result = {
             "overlapping_variables": analysis.get("overlapping_variables", []),
             "potential_synergies": analysis.get("potential_synergies", []),
             "potential_conflicts": analysis.get("potential_conflicts", []),
-            "graph": enhanced_graph
+            "graph": final_graph_dict,
+            "graph_engine": "dict"
         }
         
         return result
@@ -134,26 +156,28 @@ class SynergyAgent:
     def analyze(self, paper_a_json: Dict[str, Any], paper_b_json: Dict[str, Any]) -> Dict[str, Any]:
         """
         Analyze two papers for synergies and conflicts.
+        Knowledge graph is dict-based (not Spoon graph objects).
         """
         # Validate inputs
         self._validate_phase1_json(paper_a_json, "Paper A")
         self._validate_phase1_json(paper_b_json, "Paper B")
         
-        # Build in-memory graph
-        graph = self._build_graph(paper_a_json, paper_b_json)
+        # Build graph using dict-based representation (knowledge graph stays as dict)
+        graph_dict = self._build_graph(paper_a_json, paper_b_json)
         
         # Use Groq to analyze overlaps, synergies, and conflicts
-        analysis = self._analyze_with_groq(paper_a_json, paper_b_json, graph)
+        analysis = self._analyze_with_groq(paper_a_json, paper_b_json, graph_dict)
         
         # Enhance graph with overlapping variables and synergy/conflict edges
-        enhanced_graph = self._enhance_graph_with_analysis(graph, analysis, paper_a_json, paper_b_json)
+        final_graph_dict = self._enhance_graph_with_analysis(graph_dict, analysis, paper_a_json, paper_b_json)
         
         # Combine graph and analysis
         result = {
             "overlapping_variables": analysis.get("overlapping_variables", []),
             "potential_synergies": analysis.get("potential_synergies", []),
             "potential_conflicts": analysis.get("potential_conflicts", []),
-            "graph": enhanced_graph
+            "graph": final_graph_dict,
+            "graph_engine": "dict"
         }
         
         return result
@@ -340,40 +364,57 @@ class SynergyAgent:
                                           graph: Dict[str, Any]) -> Dict[str, Any]:
         """
         Async method to use SpoonOS Agent properly.
+        
+        REQUIRES: SpoonOS must be installed and properly configured.
+        Raises RuntimeError if SpoonOS is unavailable.
         """
+        # STRICT REQUIREMENT: SpoonOS must be available
+        if not self.spoon_available:
+            raise RuntimeError(
+                "SpoonOS is REQUIRED for this project.\n"
+                "Install with: pip install spoon-ai-sdk\n"
+                "Ensure GROQ_API_KEY is set in extraction/.env"
+            )
+        
+        if not self.spoon_agent:
+            raise RuntimeError(
+                "SpoonOS Agent is not initialized.\n"
+                "Check that GROQ_API_KEY is set in extraction/.env\n"
+                "SpoonOS Agent initialization may have failed during import."
+            )
+        
         prompt = self._build_analysis_prompt(paper_a, paper_b, graph)
         system_prompt = self._get_system_prompt()
         full_prompt = f"{system_prompt}\n\n{prompt}"
         
-        if self.spoon_available:
+        try:
+            print("[SpoonOS] Using SpoonOS Agent for analysis (Agent -> SpoonOS -> LLM)")
+            response = await self.spoon_agent.run(full_prompt)
+            content = response.content if hasattr(response, 'content') else str(response)
+            print("[SpoonOS] Successfully got response from SpoonOS Agent")
+            
+            # Strip markdown code blocks if present
+            content = content.strip()
+            if content.startswith("```"):
+                lines = content.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                content = "\n".join(lines)
+            
             try:
-                print("[SpoonOS] Using SpoonOS Agent for analysis (Agent -> SpoonOS -> LLM)")
-                response = await self.spoon_agent.run(full_prompt)
-                content = response.content if hasattr(response, 'content') else str(response)
-                print("[SpoonOS] Successfully got response from SpoonOS Agent")
-                
-                # Strip markdown code blocks if present
-                content = content.strip()
-                if content.startswith("```"):
-                    lines = content.split("\n")
-                    if lines[0].startswith("```"):
-                        lines = lines[1:]
-                    if lines and lines[-1].strip() == "```":
-                        lines = lines[:-1]
-                    content = "\n".join(lines)
-                
-                try:
-                    return json.loads(content)
-                except json.JSONDecodeError as e:
-                    print(f"JSON decode error: {e}")
-                    print(f"Response content: {content[:500]}...")
-                    return await self._fix_json_async(content)
-            except Exception as e:
-                print(f"[Warning] SpoonOS Agent failed: {e}. Falling back to direct Groq.")
-                return self._analyze_with_direct_groq(paper_a, paper_b, graph, prompt, system_prompt)
-        else:
-            print("[Direct Groq] SpoonOS not available, using direct Groq calls")
-            return self._analyze_with_direct_groq(paper_a, paper_b, graph, prompt, system_prompt)
+                return json.loads(content)
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                print(f"Response content: {content[:500]}...")
+                return await self._fix_json_async(content)
+        except Exception as e:
+            raise RuntimeError(
+                f"SpoonOS Agent call failed.\n"
+                f"Error: {e}\n"
+                f"Please check your GROQ_API_KEY and network connection."
+            ) from e
         
         # Strip markdown code blocks if present
         content = content.strip()
@@ -492,7 +533,15 @@ Return a JSON object with:
 Return ONLY valid JSON. Do not add commentary."""
     
     async def _fix_json_async(self, bad_text: str) -> Dict[str, Any]:
-        """Async version: Repair malformed JSON using SpoonOS Agent (or Groq fallback)."""
+        """
+        Fix malformed JSON using SpoonOS Agent.
+        REQUIRES: SpoonOS must be available.
+        """
+        if not self.spoon_available or not self.spoon_agent:
+            raise RuntimeError(
+                "SpoonOS is required for JSON fixing.\n"
+                "This error occurred while trying to fix malformed JSON from SpoonOS response."
+            )
         fix_prompt = f"""The following text should be valid JSON but is not. Fix it.
 
 TEXT:
@@ -505,30 +554,28 @@ Return only corrected JSON with the structure:
   "potential_conflicts": []
 }}"""
 
-        # Use SpoonOS Agent if available
-        if self.spoon_available:
-            try:
-                full_prompt = f"Fix JSON formatting only.\n\n{fix_prompt}"
-                response = await self.spoon_agent.run(full_prompt)
-                content = response.content if hasattr(response, 'content') else str(response)
-                return json.loads(content)
-            except Exception as e:
-                print(f"[Warning] SpoonOS Agent failed in fix_json: {e}. Using direct Groq.")
-        
-        # Fallback to direct Groq
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "Fix JSON formatting only."},
-                {"role": "user", "content": fix_prompt}
-            ],
-            temperature=0.0,
-        )
-
-        return json.loads(response.choices[0].message.content)
+        try:
+            full_prompt = f"Fix JSON formatting only.\n\n{fix_prompt}"
+            response = await self.spoon_agent.run(full_prompt)
+            content = response.content if hasattr(response, 'content') else str(response)
+            return json.loads(content)
+        except Exception as e:
+            raise RuntimeError(
+                f"SpoonOS Agent failed while fixing JSON.\n"
+                f"Original error: {e}\n"
+                f"Please check your GROQ_API_KEY and network connection."
+            ) from e
     
     def _fix_json(self, bad_text: str) -> Dict[str, Any]:
-        """Repair malformed JSON using SpoonOS Agent (or Groq fallback)."""
+        """
+        Fix malformed JSON using SpoonOS Agent (sync version).
+        REQUIRES: SpoonOS must be available.
+        """
+        if not self.spoon_available or not self.spoon_agent:
+            raise RuntimeError(
+                "SpoonOS is required for JSON fixing.\n"
+                "This error occurred while trying to fix malformed JSON from SpoonOS response."
+            )
         fix_prompt = f"""The following text should be valid JSON but is not. Fix it.
 
 TEXT:
@@ -541,34 +588,28 @@ Return only corrected JSON with the structure:
   "potential_conflicts": []
 }}"""
 
-        # Use SpoonOS Agent if available
-        if self.spoon_available:
+        try:
+            full_prompt = f"Fix JSON formatting only.\n\n{fix_prompt}"
+            # Check if we're in an async context
             try:
-                full_prompt = f"Fix JSON formatting only.\n\n{fix_prompt}"
-                # Check if we're in an async context
-                try:
-                    loop = asyncio.get_running_loop()
-                    # We're in an async context, use direct Groq
-                    pass  # Fall through to direct Groq
-                except RuntimeError:
-                    # No event loop, we can use asyncio.run
-                    response = asyncio.run(self.spoon_agent.run(full_prompt))
-                    content = response.content if hasattr(response, 'content') else str(response)
-                    return json.loads(content)
-            except Exception as e:
-                print(f"[Warning] SpoonOS Agent failed in fix_json: {e}. Using direct Groq.")
-        
-        # Fallback to direct Groq
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "Fix JSON formatting only."},
-                {"role": "user", "content": fix_prompt}
-            ],
-            temperature=0.0,
-        )
-
-        return json.loads(response.choices[0].message.content)
+                loop = asyncio.get_running_loop()
+                # We're in an async context, need to use async version
+                raise RuntimeError(
+                    "Cannot use sync _fix_json in async context. Use _fix_json_async instead."
+                )
+            except RuntimeError as e:
+                if "async context" in str(e):
+                    raise
+                # No event loop, we can use asyncio.run
+                response = asyncio.run(self.spoon_agent.run(full_prompt))
+                content = response.content if hasattr(response, 'content') else str(response)
+                return json.loads(content)
+        except Exception as e:
+            raise RuntimeError(
+                f"SpoonOS Agent failed while fixing JSON.\n"
+                f"Original error: {e}\n"
+                f"Please check your GROQ_API_KEY and network connection."
+            ) from e
 
 
 def analyze_papers(paper_a_json: Dict[str, Any], paper_b_json: Dict[str, Any]) -> Dict[str, Any]:

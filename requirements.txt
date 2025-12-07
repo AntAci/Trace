@@ -7,20 +7,25 @@ groq
 # Environment and configuration
 python-dotenv
 
-# HTTP requests
-requests
-
 # PDF processing
 PyPDF2>=3.0
 
-# SpoonOS integration (includes NeoFS and X402 tools)
+# SpoonOS integration (required)
+# - Provides Agent protocol (SpoonReactAI) for Phase 2 & 3
+# - Provides Tool interface for Phase 1 & 4
+# - Provides StateGraph for workflow orchestration
+# - Includes NeoFS and X402 tools (if available in SDK version)
 spoon-ai-sdk
 
-# Neo blockchain integration (install for real on-chain attestations)
+# Neo blockchain integration (optional - for real on-chain attestations)
+# Uncomment to enable Neo blockchain minting:
 # neo-mamba
 
-# Additional dependencies for SpoonOS tools
-# These may be included in spoon-ai-sdk, but listed for clarity:
-# - NeoFS storage tools require neofs-sdk
-# - X402 payment tools require web3 and eth-account
+# Neo smart contract development (optional - for contract deployment)
+# Uncomment if you need to compile/deploy contracts:
+# boa3
+
+# Additional dependencies (may be included in spoon-ai-sdk):
+# - NeoFS storage tools: neofs-sdk (if not bundled)
+# - X402 payment tools: web3, eth-account (if not bundled)
 
