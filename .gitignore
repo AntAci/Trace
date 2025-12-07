@@ -1,5 +1,5 @@
 # Environment variables (actual keys - never commit)
-extraction/.env
+# Note: extraction/.env is committed as a template with placeholder values
 
 # Python
 __pycache__/
