@@ -21,7 +21,7 @@ Trace uses Large Language Models (LLMs) to extract structured information from r
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12 or higher
 - Groq API key
 - (Optional) Neo wallet for blockchain integration
 - (Optional) NeoFS configuration for decentralized storage
@@ -35,12 +35,35 @@ git clone <repository-url>
 cd Trace
 ```
 
-2. Install dependencies:
+2. Ensure Python 3.12+ is installed:
 ```bash
+python3 --version  # Should show Python 3.12.x or higher
+```
+
+   If Python 3.12+ is not installed, install it using:
+   - **macOS:** `brew install python@3.12` or download from [python.org](https://www.python.org/downloads/)
+   - **Linux:** Use your distribution's package manager (e.g., `sudo apt install python3.12`)
+   - **Windows:** Download from [python.org](https://www.python.org/downloads/)
+
+3. Create and activate a virtual environment (recommended):
+```bash
+# Create virtual environment with Python 3.12
+python3.12 -m venv venv
+
+# Activate virtual environment
+# On macOS/Linux:
+source venv/bin/activate
+# On Windows:
+# venv\Scripts\activate
+```
+
+4. Install dependencies:
+```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-3. Configure environment variables:
+4. Configure environment variables:
 ```bash
 # Create extraction/.env file
 GROQ_API_KEY=your_groq_api_key_here
@@ -61,9 +84,9 @@ X402_NETWORK=base-sepolia
 X402_MINT_FEE=0.001
 ```
 
-4. Place 2 PDF files in `input_pdfs/` folder
+5. Place 2 PDF files in `input_pdfs/` folder
 
-5. Run the pipeline:
+6. Run the pipeline:
 ```bash
 python process_papers.py --author-wallet NYourWalletAddress
 ```
@@ -427,8 +450,10 @@ Trace/
 ├── pipeline_workflow.py  # Spoon StateGraph workflow
 ├── process_papers.py     # Main entry point
 ├── input_pdfs/          # Input PDF files (2 required)
-└── data/
-    └── hypotheses/       # Generated hypothesis cards
+├── data/
+│   └── hypotheses/       # Generated hypothesis cards
+└── web/                 # Web frontend/website
+    └── README.md         # Web folder documentation
 ```
 
 ## Requirements

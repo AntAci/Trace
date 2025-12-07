@@ -491,35 +491,30 @@ Return ONLY the JSON object, no commentary."""
     def _build_analysis_prompt(self, paper_a: Dict[str, Any], paper_b: Dict[str, Any], 
                               graph: Dict[str, Any]) -> str:
         """Build the analysis prompt for Groq."""
-        return f"""Analyze the following two structured paper representations for synergies and conflicts.
+        return f"""Analyze these two papers for a "Capability-to-Need" technical fit.
 
-PAPER A:
-{json.dumps(paper_a, indent=2)}
+PAPER A: {json.dumps(paper_a, indent=2)}
 
-PAPER B:
-{json.dumps(paper_b, indent=2)}
+PAPER B: {json.dumps(paper_b, indent=2)}
 
-GRAPH STRUCTURE:
-{json.dumps(graph, indent=2)}
+Your goal: Find where a specific **method** (from the `methods` field) in one paper addresses a specific **explicit_limitation** (from the `explicit_limitations` field) in the other.
 
-Your task:
-1. Identify overlapping variables (variables that appear in both papers, possibly with different names but same meaning)
-2. Identify potential synergies (where one paper's result could extend, refine, or support the other)
-3. Identify potential conflicts (where assumptions, methods, or conclusions clash)
+Output a STRICT JSON object:
 
-For synergies and conflicts, reference specific claims by their IDs from the graph (e.g., "A_claim_1", "B_claim_2").
-
-Return a JSON object with:
 {{
-  "overlapping_variables": ["variable1", "variable2", ...],
+  "_reasoning_trace": "Briefly explain: Does Paper A have a named method (from methods field) that fixes Paper B's specific limitation (from explicit_limitations field)? Cite the specific method name and limitation name.",
+
   "potential_synergies": [
     {{
       "id": "syn_1",
-      "description": "Specific description of how papers complement each other",
-      "paper_A_support": ["A_claim_1", "A_evidence_1"],
-      "paper_B_support": ["B_claim_2"]
+      "description": "The [specific method name from methods field] from Paper A addresses the [specific limitation from explicit_limitations field] in Paper B by [technical mechanism explaining how].",
+      "paper_A_support": ["A_claim_1", "A_claim_2"],
+      "paper_B_support": ["B_claim_1"]
     }}
   ],
+
+  "overlapping_variables": ["variable1", "variable2"],
+
   "potential_conflicts": [
     {{
       "id": "conf_1",
@@ -530,7 +525,17 @@ Return a JSON object with:
   ]
 }}
 
-Return ONLY valid JSON. Do not add commentary."""
+CRITICAL RULES:
+
+1. **Field References**: Use actual values from the `methods` and `explicit_limitations` fields in the input JSON. Do not invent new names.
+
+2. **Citation Check**: You CANNOT create a synergy unless you can cite specific claim IDs from BOTH papers (e.g., "A_claim_1", "B_claim_2").
+
+3. **Specificity**: Do not say "Blockchain improves AI". Say "ROCL (from Paper A methods) verifies Agent history (addressing Paper B explicit_limitations)".
+
+4. **Empty Check**: If the `_reasoning_trace` finds no strong technical fit between methods and explicit_limitations, return empty lists.
+
+Return ONLY valid JSON."""
     
     async def _fix_json_async(self, bad_text: str) -> Dict[str, Any]:
         """

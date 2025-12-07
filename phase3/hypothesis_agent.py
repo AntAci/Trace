@@ -672,47 +672,50 @@ PRIMARY SYNERGY TO FOCUS ON:
 {json.dumps(primary_synergy, indent=2)}
 """
         
-        return f"""Generate a testable scientific hypothesis based on the following structured paper data.
+        return f"""Generate a specific, falsifiable "Bridging Hypothesis".
 
-PAPER A (Phase 1):
-{json.dumps(paper_a, indent=2)}
-
-PAPER B (Phase 1):
-{json.dumps(paper_b, indent=2)}
-
-SYNERGY ANALYSIS (Phase 2):
-{json.dumps(synergy, indent=2)}
+INPUT SYNERGY: {json.dumps(synergy, indent=2)}
 {primary_synergy_text}
-Your task:
-1. Select ONE primary synergy from the potential_synergies list (use its "id" as primary_synergy_id)
-2. Generate a NEW, testable hypothesis that combines elements from BOTH papers
-3. The hypothesis must be falsifiable and specific enough to be tested experimentally
-4. Reference specific claim IDs from the graph (e.g., "A_claim_1", "B_claim_2")
-5. Use only variables and concepts that appear in the provided JSON
 
-Return a JSON object with this EXACT structure:
+Output a STRICT JSON object:
+
 {{
+  "_confidence_check": "Rate the technical strength of the synergy (High/Medium/Low). If Low, explain why.",
+
   "primary_synergy_id": "syn_1",
-  "hypothesis": "If X condition from Paper A is applied to Y system from Paper B, then Z measurable effect will occur.",
-  "rationale": "Short, clear explanation that explicitly references supporting claims and variables from both papers. Must mention specific claim IDs like 'A_claim_1' and 'B_claim_2'.",
+
+  "hypothesis": "If [specific method from methods field] is applied to [system/context from variables field], then [specific variable from variables field] will [increase/decrease/change] due to [technical mechanism from the synergy description].",
+
+  "rationale": "Technical justification referencing specific entities from the input JSON (e.g. method names from methods field, limitation names from explicit_limitations field, variable names from variables field).",
+
   "source_support": {{
-    "paper_A_claim_ids": ["A_claim_1", "A_claim_2"],
+    "paper_A_claim_ids": ["A_claim_1"],
     "paper_B_claim_ids": ["B_claim_1"],
-    "variables_used": ["temperature", "state_of_health"]
+    "variables_used": ["variable_name_from_paper_a", "variable_name_from_paper_b"]
   }},
+
   "proposed_experiment": {{
-    "description": "High-level but concrete experimental setup that could test this hypothesis.",
-    "measurements": ["what to measure", "another measurement"],
-    "expected_direction": "increase / decrease / non-linear effect / etc."
+    "description": "Concrete A/B test description using specific methods and variables from the input JSON.",
+    "measurements": ["specific_metric_1", "specific_metric_2"],
+    "expected_direction": "increase/decrease"
   }},
-  "confidence": "low / medium / high",
-  "risk_notes": [
-    "Key assumption that might fail",
-    "Another potential weakness"
-  ]
+
+  "confidence": "high/medium/low",
+
+  "risk_notes": ["Risk 1", "Risk 2"]
 }}
 
-Return ONLY the JSON object. Do not add commentary."""
+RULES:
+
+1. **Field References**: Use actual values from the input JSON fields (`methods`, `explicit_limitations`, `variables`, `claims`). Do not invent new names.
+
+2. **No New Variables**: You must ONLY use variables present in the `variables` fields from both papers.
+
+3. **Falsifiability**: The hypothesis must be testable with specific measurements (e.g. "Rate of X will decrease by Y%").
+
+4. **Null Result**: If `_confidence_check` is Low, set the hypothesis text to "Insufficient synergy for valid hypothesis."
+
+Return ONLY valid JSON."""
     
     def _validate_hypothesis_card(self, card: Dict[str, Any]):
         """Validate that the hypothesis card has all required fields."""

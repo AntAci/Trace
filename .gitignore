@@ -1,5 +1,5 @@
 # Environment variables (actual keys - never commit)
-# Note: extraction/.env is committed as a template with placeholder values
+extraction/.env
 
 # Python
 __pycache__/
@@ -29,3 +29,20 @@ data/
 # Input PDFs (keep folder, ignore PDF files)
 input_pdfs/*.pdf
 
+# Web frontend
+web/node_modules/
+web/.next/
+web/dist/
+web/build/
+web/.env.local
+web/.env.development.local
+web/.env.test.local
+web/.env.production.local
+web/.cache/
+web/.parcel-cache/
+web/.vite/
+
+# Log files
+*.log
+api_server.log
+pipeline_run.log

@@ -90,24 +90,49 @@ async def extract_structure_async(text, title=""):
         )
     
     prompt = f"""
-You are extracting structured scientific information from a research paper.
+You are a Precision Scientific Entity Extractor.
 
-TITLE:
-{title}
+TITLE: {title}
 
-PAPER TEXT:
-{text}
+PAPER TEXT: {text}
 
-Extract the following fields in STRICT JSON format:
+INSTRUCTIONS:
 
-- claims: list of the main scientific claims (all claims)
-- methods: the main methods or techniques used
-- evidence: concrete evidence supporting the claims (1–2 items, numerical or experimental details if stated)
-- explicit_limitations: limitations directly mentioned in the paper
-- implicit_limitations: limitations that follow logically from the research
-- variables: important variables or scientific factors mentioned (e.g., temperature, pressure, concentration, model parameters)
+1. First, scan the text for specific named entities (algorithms, metrics, specific errors).
 
-Return ONLY valid JSON. Do not add commentary.
+2. List these in the `_analysis_scratchpad` to verify they exist in the text.
+
+3. Then, categorize them into the strict fields below.
+
+Output a STRICT JSON object:
+
+{{
+  "_analysis_scratchpad": "List 3-5 specific technical terms or numbers found in the text (e.g. 'ROCL', 'p < 0.05') before categorizing.",
+
+  "claims": ["Claim 1", "Claim 2"],
+
+  "methods": ["Specific Named Algorithm 1", "Protocol 2"],
+
+  "evidence": ["Quantitative Metric 1", "Experimental Result 2"],
+
+  "explicit_limitations": ["Specific Failure Mode 1", "Error 2"],
+
+  "implicit_limitations": ["Logical Risk 1"],
+
+  "variables": ["Input Parameter 1", "Factor 2"]
+}}
+
+CRITICAL RULES:
+
+- **methods**: Must be CAPITALIZED, named algorithms, architectures, or protocols (e.g., "ROCL", "DeepLabCut", "Transformer").
+
+- **explicit_limitations**: Must be specific failure modes or reliability problems (e.g., "hallucination", "latency", "mode collapse").
+
+- **evidence**: Must be specific numbers, percentages, or statistical results.
+
+- **Escape Hatch**: If a field has no specific named entities, return an empty list [].
+
+Return ONLY valid JSON.
     """
 
     # Use SpoonOS ChatBot (primary) or LLMManager (fallback)
@@ -226,22 +251,47 @@ def _extract_with_groq(text, title=""):
     prompt = f"""
 You are extracting structured scientific information from a research paper.
 
-TITLE:
-{title}
+TITLE: {title}
 
-PAPER TEXT:
-{text}
+PAPER TEXT: {text}
 
-Extract the following fields in STRICT JSON format:
+INSTRUCTIONS:
 
-- claims: list of the main scientific claims (all claims)
-- methods: the main methods or techniques used
-- evidence: concrete evidence supporting the claims (1–2 items, numerical or experimental details if stated)
-- explicit_limitations: limitations directly mentioned in the paper
-- implicit_limitations: limitations that follow logically from the research
-- variables: important variables or scientific factors mentioned (e.g., temperature, pressure, concentration, model parameters)
+1. First, scan the text for specific named entities (algorithms, metrics, specific errors).
 
-Return ONLY valid JSON. Do not add commentary.
+2. List these in the `_analysis_scratchpad` to verify they exist in the text.
+
+3. Then, categorize them into the strict fields below.
+
+Output a STRICT JSON object:
+
+{{
+  "_analysis_scratchpad": "List 3-5 specific technical terms or numbers found in the text (e.g. 'ROCL', 'p < 0.05') before categorizing.",
+
+  "claims": ["Claim 1", "Claim 2"],
+
+  "methods": ["Specific Named Algorithm 1", "Protocol 2"],
+
+  "evidence": ["Quantitative Metric 1", "Experimental Result 2"],
+
+  "explicit_limitations": ["Specific Failure Mode 1", "Error 2"],
+
+  "implicit_limitations": ["Logical Risk 1"],
+
+  "variables": ["Input Parameter 1", "Factor 2"]
+}}
+
+CRITICAL RULES:
+
+- **methods**: Must be CAPITALIZED, named algorithms, architectures, or protocols (e.g., "ROCL", "DeepLabCut", "Transformer").
+
+- **explicit_limitations**: Must be specific failure modes or reliability problems (e.g., "hallucination", "latency", "mode collapse").
+
+- **evidence**: Must be specific numbers, percentages, or statistical results.
+
+- **Escape Hatch**: If a field has no specific named entities, return an empty list [].
+
+Return ONLY valid JSON.
     """
     
     response = client.chat.completions.create(
