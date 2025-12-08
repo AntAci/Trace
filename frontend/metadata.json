@@ -1,0 +1,5 @@
+{
+  "name": "TRACE",
+  "description": "TRACE is an AI research agent that generates novel scientific hypotheses by analyzing academic papers and mints them as on-chain scientific artifacts.",
+  "requestFramePermissions": []
+}
