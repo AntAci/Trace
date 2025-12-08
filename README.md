@@ -57,15 +57,20 @@ source venv/bin/activate
 # venv\Scripts\activate
 ```
 
-4. Install dependencies:
+4. Install backend dependencies:
 ```bash
+cd backend
 pip install --upgrade pip
 pip install -r requirements.txt
+cd ..
 ```
 
-4. Configure environment variables:
+5. Configure environment variables:
 ```bash
-# Create extraction/.env file
+# Create backend/extraction/.env file
+cd backend/extraction
+cp .env.example .env
+# Edit .env and add your keys:
 GROQ_API_KEY=your_groq_api_key_here
 
 # Optional: Neo blockchain
@@ -84,11 +89,30 @@ X402_NETWORK=base-sepolia
 X402_MINT_FEE=0.001
 ```
 
-5. Place 2 PDF files in `input_pdfs/` folder
-
-6. Run the pipeline:
+6. (Optional) Install frontend dependencies:
 ```bash
-python process_papers.py --author-wallet NYourWalletAddress
+cd frontend
+npm install
+cd ..
+```
+
+7. Place 2 PDF files in `input_pdfs/` folder
+
+8. Run the pipeline:
+```bash
+# From project root
+cd backend
+python process_papers.py --input-folder ../input_pdfs --author-wallet NYourWalletAddress
+cd ..
+```
+
+Or run the API server for web interface:
+```bash
+# From project root
+cd backend
+python api_server.py
+# Server runs on http://localhost:8000
+cd ..
 ```
 
 ## How It Works
@@ -158,7 +182,7 @@ python process_papers.py --author-wallet NYourWalletAddress
 │  • Synergy Analysis JSON                                   │
 │  • Hypothesis Card JSON                                    │
 │  • Mint Result (hash, tx IDs, etc.)                        │
-│  • Saved files in data/hypotheses/                         │
+│  • Saved files in data/hypotheses/ (project root)         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -194,7 +218,7 @@ python process_papers.py --author-wallet NYourWalletAddress
 - Validates hypothesis card structure
 - Creates deterministic JSON (canonical form)
 - Computes SHA-256 content hash
-- Saves to off-chain registry (`data/hypotheses/`)
+- Saves to off-chain registry (`../data/hypotheses/` relative to backend)
 - Writes Neo blockchain receipt (on-chain attestation)
 - Stores on NeoFS using SpoonOS Tools (decentralized storage)
 - Processes X402 payment using SpoonOS Tools (micropayment)
@@ -214,11 +238,14 @@ The pipeline uses **Spoon StateGraph** for workflow orchestration:
 ### Command Line
 
 ```bash
+# Navigate to backend directory first
+cd backend
+
 # Basic usage (defaults)
 python process_papers.py
 
-# Specify input folder
-python process_papers.py --input-folder /path/to/pdfs
+# Specify input folder (relative to project root)
+python process_papers.py --input-folder ../input_pdfs
 
 # Specify author wallet
 python process_papers.py --author-wallet NYourNeoWalletAddress
@@ -231,7 +258,7 @@ python process_papers.py --use-x402
 
 # All options
 python process_papers.py \
-  --input-folder input_pdfs \
+  --input-folder ../input_pdfs \
   --author-wallet NYourWallet \
   --use-neofs \
   --use-x402
@@ -240,12 +267,18 @@ python process_papers.py \
 ### Python API
 
 ```python
+import sys
+from pathlib import Path
+
+# Add backend to path
+sys.path.insert(0, str(Path(__file__).parent / "backend"))
+
 import asyncio
 from process_papers import process_papers_from_folder
 
-# Process 2 PDFs from default folder
+# Process 2 PDFs from default folder (relative to project root)
 result = asyncio.run(process_papers_from_folder(
-    input_folder="input_pdfs",
+    input_folder="../input_pdfs",
     author_wallet="NYourWalletAddress",
     use_neofs=True,
     use_x402=False
@@ -264,11 +297,36 @@ if "error" not in result:
     print(f"Neo TX ID: {mint_result['neo_tx_id']}")
 ```
 
+### Web Interface (Frontend)
+
+1. Start the backend API server:
+```bash
+cd backend
+python api_server.py
+# Server runs on http://localhost:8000
+```
+
+2. In a new terminal, start the frontend:
+```bash
+cd frontend
+npm install  # First time only
+npm run dev
+# Frontend runs on http://localhost:5173
+```
+
+3. Open your browser to `http://localhost:5173`
+
+The frontend provides a web interface for:
+- Uploading paper PDFs
+- Viewing hypothesis generation progress
+- Visualizing hypothesis cards
+- Minting hypotheses to blockchain
+
 ## Output Structure
 
 ### Hypothesis Card
 
-Each generated hypothesis is saved as a JSON file in `data/hypotheses/`:
+Each generated hypothesis is saved as a JSON file in `data/hypotheses/` (created at project root):
 
 ```json
 {
@@ -334,6 +392,7 @@ Trace uses **SpoonOS NeoFS Tools** for decentralized storage:
 
 ### NeoFS Configuration
 
+Add to `backend/extraction/.env`:
 ```bash
 NEOFS_ENDPOINT=grpc://st1.storage.fs.neo.org:8080
 NEOFS_OWNER_ADDRESS=NXxxxxYourNeoAddressHere
@@ -352,6 +411,7 @@ Trace uses **SpoonOS X402 Tools** for micropayment processing:
 
 ### X402 Configuration
 
+Add to `backend/extraction/.env`:
 ```bash
 X402_PRIVATE_KEY=0x...your_eth_private_key
 X402_RECEIVER_ADDRESS=0x...
@@ -371,6 +431,7 @@ Trace writes hypothesis receipts to the Neo blockchain:
 
 ### Neo Configuration
 
+Add to `backend/extraction/.env`:
 ```bash
 NEO_NETWORK=testnet
 NEO_PRIVATE_KEY=your_wif_private_key
@@ -379,6 +440,39 @@ NEO_REGISTRY_CONTRACT=contract_hash
 ```
 
 The system uses `neo-mamba` SDK for blockchain interactions. If unavailable, it falls back to mock transaction IDs.
+
+### Frontend Configuration
+
+Create `frontend/.env.local`:
+```bash
+# Backend API URL (default: http://localhost:8000)
+VITE_API_URL=http://localhost:8000
+
+# Optional: Gemini API key for image generation
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+## API Server
+
+The backend includes a FastAPI server (`backend/api_server.py`) that exposes the pipeline as a REST API for the web frontend.
+
+### API Endpoints
+
+- `POST /api/process-papers` - Process two papers and generate a hypothesis
+- `GET /api/health` - Health check endpoint
+- `POST /api/extract-paper` - Extract structured data from a single paper
+- `POST /api/upload-pdf` - Upload and process PDF files
+
+### Running the API Server
+
+```bash
+cd backend
+python api_server.py
+# Or with uvicorn:
+uvicorn api_server:app --reload --port 8000
+```
+
+The server runs on `http://localhost:8000` by default. CORS is configured to allow requests from the frontend (localhost:5173, localhost:3000).
 
 ## SpoonOS Integration
 
@@ -434,42 +528,87 @@ All errors are logged and included in the result dictionary.
 
 ```
 Trace/
-├── extraction/          # Phase 0 & 1
-│   ├── pdf_reader.py     # PDF text extraction
-│   ├── spoon_tool.py     # SpoonOS Tool for extraction
-│   └── extract_paper.py  # Core LLM extraction logic
-├── phase2/              # Phase 2
-│   └── synergy_agent.py # SpoonOS Agent for synergy analysis
-├── phase3/              # Phase 3
-│   └── hypothesis_agent.py # SpoonOS Agent for hypothesis generation
-├── phase4/              # Phase 4
-│   ├── minting_service.py # Core minting logic
-│   ├── registry_store.py  # Off-chain registry
-│   ├── neo_client.py      # Neo blockchain integration
-│   └── spoon_tools.py     # NeoFS & X402 SpoonOS Tools
-├── pipeline_workflow.py  # Spoon StateGraph workflow
-├── process_papers.py     # Main entry point
-├── input_pdfs/          # Input PDF files (2 required)
-├── data/
-│   └── hypotheses/       # Generated hypothesis cards
-└── web/                 # Web frontend/website
-    └── README.md         # Web folder documentation
+├── backend/                    # Python backend
+│   ├── api_server.py            # FastAPI server for web interface
+│   ├── extraction/              # Phase 0 & 1
+│   │   ├── pdf_reader.py        # PDF text extraction
+│   │   ├── spoon_tool.py        # SpoonOS Tool for extraction
+│   │   ├── extract_paper.py     # Core LLM extraction logic
+│   │   ├── extract_groq.py     # Groq LLM integration
+│   │   └── .env.example         # Environment variable template
+│   ├── phase2/                  # Phase 2
+│   │   └── synergy_agent.py     # SpoonOS Agent for synergy analysis
+│   ├── phase3/                  # Phase 3
+│   │   └── hypothesis_agent.py  # SpoonOS Agent for hypothesis generation
+│   ├── phase4/                  # Phase 4
+│   │   ├── minting_service.py   # Core minting logic
+│   │   ├── registry_store.py    # Off-chain registry
+│   │   ├── neo_client.py        # Neo blockchain integration
+│   │   └── spoon_tools.py       # NeoFS & X402 SpoonOS Tools
+│   ├── contracts/               # Neo smart contracts
+│   │   └── hypothesis_registry.py
+│   ├── scripts/                 # Utility scripts
+│   │   ├── create_wallet.py
+│   │   └── deploy_contract.py
+│   ├── pipeline_workflow.py     # Spoon StateGraph workflow
+│   ├── process_papers.py        # Main entry point
+│   └── requirements.txt         # Python dependencies
+├── frontend/                    # React TypeScript frontend
+│   ├── components/              # React components
+│   │   ├── PaperInput.tsx       # Paper upload interface
+│   │   ├── HypothesisCard.tsx  # Hypothesis display
+│   │   ├── AnalysisVisualization.tsx
+│   │   ├── IsometricAssembly.tsx
+│   │   └── MintCelebration.tsx
+│   ├── services/                # API services
+│   │   ├── backendService.ts    # Backend API client
+│   │   └── geminiService.ts     # Gemini image generation
+│   ├── App.tsx                  # Main app component
+│   ├── index.tsx                # Entry point
+│   ├── vite.config.ts           # Vite configuration
+│   ├── package.json             # Node.js dependencies
+│   └── README.md                # Frontend documentation
+├── input_pdfs/                  # Input PDF files (2 required)
+├── data/                        # Generated data
+│   └── hypotheses/              # Generated hypothesis cards
+├── README.md                    # This file
+└── LICENSE                      # License file
 ```
 
 ## Requirements
 
-### Required
+### Backend (Python)
 
+**Required:**
+- Python 3.12 or higher
 - `groq` - LLM API client
 - `python-dotenv` - Environment variable management
 - `PyPDF2>=3.0` - PDF text extraction
 - `spoon-ai-sdk` - SpoonOS integration
+- `fastapi` - API server (for web interface)
+- `uvicorn` - ASGI server (for API)
 
-### Optional
-
+**Optional:**
 - `neo-mamba` - Neo blockchain SDK (for real on-chain attestations)
 - NeoFS SDK (included in spoon-ai-sdk if available)
 - X402 SDK (included in spoon-ai-sdk if available)
+
+### Frontend (Node.js)
+
+**Required:**
+- Node.js 18+ and npm
+- See `frontend/package.json` for full dependency list
+
+**Optional:**
+- Gemini API key (for image generation in frontend)
+
+## Credits
+
+This project was developed with contributions from:
+
+- **Antonio Aciobanitei** - Project development and integration
+- **Nicole Jiang** ([@NicoleJiang133](https://github.com/NicoleJiang133)) - Frontend design and development ([TRACE_FRONT](https://github.com/NicoleJiang133/TRACE_FRONT))
+- **Aswin Giridhar** ([@aswin-giridhar](https://github.com/aswin-giridhar)) - Original repository and backend development
 
 ## License
 
