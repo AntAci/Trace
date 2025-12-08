@@ -677,6 +677,17 @@ PRIMARY SYNERGY TO FOCUS ON:
 INPUT SYNERGY: {json.dumps(synergy, indent=2)}
 {primary_synergy_text}
 
+INSTRUCTIONS:
+
+1. **Mandatory Selection**: You MUST select exactly ONE synergy ID from the provided `INPUT SYNERGY` list.
+   - Look at the `potential_synergies` list.
+   - Copy one `id` (e.g. "syn_1") exactly.
+   - It cannot be empty or null.
+
+2. **Hypothesis Construction**:
+   - Use the description from that specific synergy ID as the base.
+   - Combine it with the specific variables involved.
+
 Output a STRICT JSON object:
 
 {{
@@ -686,7 +697,7 @@ Output a STRICT JSON object:
 
   "hypothesis": "If [specific method from methods field] is applied to [system/context from variables field], then [specific variable from variables field] will [increase/decrease/change] due to [technical mechanism from the synergy description].",
 
-  "rationale": "Technical justification referencing specific entities from the input JSON (e.g. method names from methods field, limitation names from explicit_limitations field, variable names from variables field).",
+  "rationale": "Step-by-step logic trace. Format: 'Node A (Paper 1) connects to Node B (Paper 2) via [Relationship].' Explain the causal chain.",
 
   "source_support": {{
     "paper_A_claim_ids": ["A_claim_1"],
@@ -707,13 +718,18 @@ Output a STRICT JSON object:
 
 RULES:
 
-1. **Field References**: Use actual values from the input JSON fields (`methods`, `explicit_limitations`, `variables`, `claims`). Do not invent new names.
+1. **Field References**: Use actual values from input JSON fields. Do not invent new names.
 
-2. **No New Variables**: You must ONLY use variables present in the `variables` fields from both papers.
+2. **The "No Free Lunch" Theorem**:
+   - Do NOT assume security methods (like ZKP, Encryption) improve performance metrics (Accuracy, Speed).
+   - Usually, Security = Lower Speed/Higher Cost.
+   - If proposing a security method, the benefit MUST be "Privacy," "Robustness," or "Trust," NOT "Accuracy."
 
-3. **Falsifiability**: The hypothesis must be testable with specific measurements (e.g. "Rate of X will decrease by Y%").
+3. **Mechanism Requirement**: You must explain the *mechanism*. Don't just say "A aligns with B." Say "A's output X is used as input for B's process Y."
 
-4. **Null Result**: If `_confidence_check` is Low, set the hypothesis text to "Insufficient synergy for valid hypothesis."
+4. **Falsifiability**: The hypothesis must be testable (e.g., "Rate of X will decrease by Y%").
+
+5. **Null Result**: If `_confidence_check` is Low, set the hypothesis text to "Insufficient synergy for valid hypothesis."
 
 Return ONLY valid JSON."""
     
@@ -806,11 +822,14 @@ Return ONLY valid JSON."""
         
         # Check if primary_synergy_id exists
         primary_synergy_id = hypothesis_card.get("primary_synergy_id")
-        if primary_synergy_id:
+        if primary_synergy_id and primary_synergy_id.strip():
             synergy_ids = {s.get("id") for s in synergy_json.get("potential_synergies", [])}
             if primary_synergy_id not in synergy_ids:
                 errors.append(f"Invalid primary_synergy_id: {primary_synergy_id}")
                 fixable = True  # Can update to first valid synergy
+        elif not primary_synergy_id or not primary_synergy_id.strip():
+            errors.append(f"primary_synergy_id is missing or empty")
+            fixable = True
         
         return {
             "valid": len(errors) == 0,
@@ -854,17 +873,25 @@ Return ONLY valid JSON."""
             var for var in variables_used if str(var).lower() in valid_variables
         ]
         
-        # Fix primary_synergy_id if invalid
+        # Fix primary_synergy_id if invalid or empty
         primary_synergy_id = hypothesis_card.get("primary_synergy_id")
-        if primary_synergy_id:
-            synergy_ids = {s.get("id") for s in synergy_json.get("potential_synergies", [])}
-            if primary_synergy_id not in synergy_ids:
-                # Use first valid synergy
-                synergies = synergy_json.get("potential_synergies", [])
-                if synergies:
-                    hypothesis_card["primary_synergy_id"] = synergies[0].get("id", "unknown")
-                else:
-                    hypothesis_card["primary_synergy_id"] = "unknown"
+        
+        # Check if empty/missing OR invalid
+        needs_fix = False
+        synergy_ids = {s.get("id") for s in synergy_json.get("potential_synergies", [])}
+        
+        if not primary_synergy_id or not primary_synergy_id.strip():
+            needs_fix = True
+        elif primary_synergy_id not in synergy_ids:
+            needs_fix = True
+            
+        if needs_fix:
+            # Use first valid synergy
+            synergies = synergy_json.get("potential_synergies", [])
+            if synergies:
+                hypothesis_card["primary_synergy_id"] = synergies[0].get("id", "unknown")
+            else:
+                hypothesis_card["primary_synergy_id"] = "unknown"
         
         return hypothesis_card
     

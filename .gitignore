@@ -1,7 +1,5 @@
-# Environment variables (actual keys - never commit)
-extraction/.env
-
-# Python
+# Dependencies
+node_modules/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -12,11 +10,25 @@ venv/
 ENV/
 .venv
 
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Environment files (actual keys - never commit)
+.env
+.env.local
+.env.*.local
+extraction/.env
+backend/extraction/.env
+*.env.backup
+
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+.DS_Store
 
 # Output directories
 extraction/extracted/
