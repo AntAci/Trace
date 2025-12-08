@@ -604,11 +604,11 @@ Trace/
 
 ## Credits
 
-This project was developed with contributions from:
+This project was developed by:
 
-- **Antonio Aciobanitei** - Project development and integration
-- **Nicole Jiang** ([@NicoleJiang133](https://github.com/NicoleJiang133)) - Frontend design and development ([TRACE_FRONT](https://github.com/NicoleJiang133/TRACE_FRONT))
-- **Aswin Giridhar** ([@aswin-giridhar](https://github.com/aswin-giridhar)) - Original repository and backend development
+- **Antonio Aciobanitei**
+- **Nicole Jiang** ([@NicoleJiang133](https://github.com/NicoleJiang133)) - [TRACE_FRONT](https://github.com/NicoleJiang133/TRACE_FRONT)
+- **Aswin Giridhar** ([@aswin-giridhar](https://github.com/aswin-giridhar))
 
 ## License
 
