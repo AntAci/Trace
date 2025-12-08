@@ -727,9 +727,15 @@ RULES:
 
 3. **Mechanism Requirement**: You must explain the *mechanism*. Don't just say "A aligns with B." Say "A's output X is used as input for B's process Y."
 
-4. **Falsifiability**: The hypothesis must be testable (e.g., "Rate of X will decrease by Y%").
+4. **Universal Compatibility Check (The "Interface Test")**:
+   - **Input/Output Match**: Does [Method A] produce an output that [System B] can actually ingest? (e.g. Don't apply "Social Policy" to "Molecular Binding" unless there is a mechanism).
+   - **Scale Match**: Do not apply macroscopic solutions to microscopic problems without a clear bridge.
+   - **Category Error**: Do not apply statistical methods (like Machine Learning) to deterministic protocols (like Cryptography) *unless* the goal is specifically parameter optimization.
+   - **Actionability**: If you cannot describe the specific "Interface" (how they connect), REJECT the hypothesis.
 
-5. **Null Result**: If `_confidence_check` is Low, set the hypothesis text to "Insufficient synergy for valid hypothesis."
+5. **Falsifiability**: The hypothesis must be testable (e.g., "Rate of X will decrease by Y%").
+
+6. **Null Result**: If `_confidence_check` is Low, set the hypothesis text to "Insufficient synergy for valid hypothesis."
 
 Return ONLY valid JSON."""
     
